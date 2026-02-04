@@ -8,6 +8,8 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
+import threading
 import time
 
 from pathlib import Path
@@ -16,6 +18,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
 VENV_DIR = REPO_ROOT / ".venv"
+
+# ANSI for terminal colors (whole backend line in green)
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 
 def get_venv_python():
@@ -39,15 +45,19 @@ def resolve_command_executable(command):
     raise FileNotFoundError(f"Executable not found on PATH: {executable}")
 
 
-def start_process(command, cwd):
+def start_process(command, cwd, capture_output=False):
     resolved_command = resolve_command_executable(command)
+    kwargs = {"cwd": str(cwd)}
+    if capture_output:
+        kwargs["stdout"] = subprocess.PIPE
+        kwargs["stderr"] = subprocess.STDOUT
+        kwargs["text"] = True
+        kwargs["bufsize"] = 1
     if os.name == "nt":
-        return subprocess.Popen(
-            resolved_command,
-            cwd=str(cwd),
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
-    return subprocess.Popen(resolved_command, cwd=str(cwd), preexec_fn=os.setsid)
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        return subprocess.Popen(resolved_command, **kwargs)
+    kwargs["preexec_fn"] = os.setsid
+    return subprocess.Popen(resolved_command, **kwargs)
 
 
 def stop_process(proc, timeout=5):
@@ -80,6 +90,22 @@ def stop_process(proc, timeout=5):
         pass
 
 
+def relay_output(pipe, prefix, lock, color=None):
+    """Read lines from pipe and print with prefix, holding lock to avoid interleaving."""
+    try:
+        for line in pipe:
+            with lock:
+                if color:
+                    sys.stdout.write(color + prefix + line + RESET)
+                else:
+                    sys.stdout.write(prefix + line)
+                if not line.endswith("\n"):
+                    sys.stdout.write("\n")
+                sys.stdout.flush()
+    except (ValueError, OSError):
+        pass
+
+
 def main():
     venv_python = get_venv_python()
     if not venv_python.exists():
@@ -89,10 +115,28 @@ def main():
     backend_cmd = [str(venv_python), "-m", "uvicorn", "main:app", "--reload", "--port", "5000"]
     frontend_cmd = ["npm", "run", "dev"]
 
-    print("Starting backend...")
-    backend_proc = start_process(backend_cmd, BACKEND_DIR)
-    print("Starting frontend...")
-    frontend_proc = start_process(frontend_cmd, REPO_ROOT)
+    output_lock = threading.Lock()
+
+    with output_lock:
+        print("Starting backend...")
+    backend_proc = start_process(backend_cmd, BACKEND_DIR, capture_output=True)
+    backend_relay = threading.Thread(
+        target=relay_output,
+        args=(backend_proc.stdout, "[backend] ", output_lock),
+        kwargs={"color": GREEN},
+        daemon=True,
+    )
+    backend_relay.start()
+
+    with output_lock:
+        print("Starting frontend...")
+    frontend_proc = start_process(frontend_cmd, REPO_ROOT, capture_output=True)
+    frontend_relay = threading.Thread(
+        target=relay_output,
+        args=(frontend_proc.stdout, "[frontend] ", output_lock),
+        daemon=True,
+    )
+    frontend_relay.start()
 
     stopping = {"value": False}
 
@@ -100,7 +144,9 @@ def main():
         if stopping["value"]:
             return
         stopping["value"] = True
-        print("Stopping processes...")
+        with output_lock:
+            print("Stopping processes...")
+            sys.stdout.flush()
         stop_process(frontend_proc)
         stop_process(backend_proc)
 
