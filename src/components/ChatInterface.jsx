@@ -13,6 +13,9 @@ const TOOL_COMMANDS_ALWAYS_AVAILABLE = [
   { command: 'search_help_docs', description: 'Search bullAI help documentation', key: 'bullAiHelp' },
 ];
 
+const WELCOME_HEADLINE = 'Welcome to bullAI';
+const TYPING_SPEED_MS = 70;
+
 export default function ChatInterface({
   initialSessionId,
   isSideNavOpen,
@@ -27,6 +30,9 @@ export default function ChatInterface({
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isApiKeyLoading, setIsApiKeyLoading] = useState(true);
+  const [typedHeadline, setTypedHeadline] = useState('');
+  const [isHeadlineComplete, setIsHeadlineComplete] = useState(false);
+  const typewriterIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const commandsPopupRef = useRef(null);
@@ -355,6 +361,23 @@ export default function ChatInterface({
 
   const isWelcomeScreen = messages.length === 0;
 
+  useEffect(() => {
+    if (!isWelcomeScreen) return;
+    typewriterIndexRef.current = 0;
+    setTypedHeadline('');
+    setIsHeadlineComplete(false);
+    const id = setInterval(() => {
+      if (typewriterIndexRef.current >= WELCOME_HEADLINE.length) {
+        setIsHeadlineComplete(true);
+        clearInterval(id);
+        return;
+      }
+      setTypedHeadline(WELCOME_HEADLINE.slice(0, typewriterIndexRef.current + 1));
+      typewriterIndexRef.current += 1;
+    }, TYPING_SPEED_MS);
+    return () => clearInterval(id);
+  }, [isWelcomeScreen]);
+
   return (
     <div className="flex flex-col h-full bg-surface shadow-[inset_0_0_30px_rgba(34,197,94,0.1)]">
       {/* Chat Header */}
@@ -469,30 +492,30 @@ export default function ChatInterface({
       <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-none">
         <div className={`max-w-7xl mx-auto ${isWelcomeScreen ? 'flex items-center min-h-full' : ''}`}>
           {isWelcomeScreen && (
-            <div className="flex flex-col items-center justify-center w-full text-center animate-slide-up">
-              <div className="mb-6 relative flex items-center justify-center">
-                <div className="absolute w-70 h-70" />
+            <div className="flex flex-col items-center justify-center w-full text-center">
+              <div className="mb-4 relative flex items-center justify-center animate-slide-up">
+                <div className="absolute w-60 h-60" />
                 <img
                   src={bullImage}
                   alt="bullAI"
                   className="w-36 h-36 object-contain z-10 drop-shadow-[0_0_32px_rgba(255,140,64,0.35)]"
                 />
               </div>
-              <h1 className="text-4xl font-bold mb-4 animate-slide-up animate-delay-100 bg-gradient-to-r from-orange-400 to-green-400 text-transparent bg-clip-text drop-shadow-[0_0_32px_rgba(255,140,64,0.7)]">
-                Welcome to bullAI
+              <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-orange-400 to-green-400 text-transparent bg-clip-text drop-shadow-[0_0_32px_rgba(255,140,64,0.7)]">
+                {typedHeadline}
+                {!isHeadlineComplete && (
+                  <span className="cursor-blink text-orange-400 ml-0.5" aria-hidden="true">|</span>
+                )}
               </h1>
-              <p className="text-lg text-gray-300 mb-2 max-w-2xl animate-slide-up animate-delay-200">
+              <p className="text-lg text-gray-300 mb-8 max-w-2xl animate-slide-up">
                 Your AI finance helper for steady guidance.
-              </p>
-              <p className="text-base text-gray-400 mb-8 max-w-2xl animate-slide-up animate-delay-300">
-                I'm here to help. Ask away and I'll walk with you step by step.
               </p>
               {!isApiKeyLoading && !hasApiKey && (
                 <p className="text-sm text-orange-300 mb-6 max-w-2xl animate-slide-up animate-delay-300">
                   Set your OpenAI API key in Settings to start chatting.
                 </p>
               )}
-              <div className="flex items-center gap-2 text-sm text-gray-500 animate-slide-up animate-delay-300">
+              <div className="flex items-center gap-2 text-sm text-gray-500 animate-slide-up">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
