@@ -1,0 +1,80 @@
+"""
+bullAI Internal Chat - API models
+
+Written by: zapulam
+"""
+
+from pydantic import BaseModel, Field
+from typing import Optional, Any, Literal
+
+
+# Chat Context
+class ChatContext(BaseModel):
+    api_key: str
+
+
+# Structured output for bullAI triage agent
+class Output(BaseModel):
+    """
+    Structured output for the bullAI triage agent.
+    """
+    thought: str = Field(
+        default=None,
+        description=(
+            "Internal process of how you came to your response, written in complete sentences. "
+            "This is shown separately from the final response."
+        ),
+    )
+    response: str = Field(
+        description="Detailed, user-facing response, written in complete sentences."
+    )
+    status: Literal["incomplete", "awaiting_approval", "complete"] = Field(
+        default="incomplete"
+    )
+
+
+# Chat generation
+class TurnRequest(BaseModel):
+    """
+    FastAPI payload
+    """
+    conversation_id: str
+    user_input: str
+
+
+# Memories 
+class MemoryCreateRequest(BaseModel):
+    category: Optional[str] = None
+    content: str
+
+
+class MemoryUpdateRequest(BaseModel):
+    category: Optional[str] = None
+    content: str
+
+
+class MemoryResponse(BaseModel):
+    id: int
+    category: Optional[str] = None
+    content: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+# Settings 
+class OpenAIKeyRequest(BaseModel):
+    api_key: str = Field(min_length=1)
+
+
+class OpenAIKeyResponse(BaseModel):
+    has_key: bool
+    masked_key: Optional[str] = None
+
+
+class AlphaVantageKeyRequest(BaseModel):
+    api_key: str = Field(min_length=1)
+
+
+class AlphaVantageKeyResponse(BaseModel):
+    has_key: bool
+    masked_key: Optional[str] = None

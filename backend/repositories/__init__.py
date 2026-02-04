@@ -1,0 +1,2 @@
+from .memories_repository import MemoriesRepository
+from .settings_repository import SettingsRepository
