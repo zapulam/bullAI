@@ -546,7 +546,7 @@ export default function ChatInterface({
                 placeholder={inputPlaceholder}
                 disabled={isLoading || isApiKeyLoading || !hasApiKey}
                 rows={1}
-                className="w-full align-middle bg-surface-elevated text-white rounded-lg px-4 py-3 border border-divider focus:border-green-500 focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                className="w-full text-s align-middle bg-surface-elevated text-white rounded-lg px-4 py-3 border border-divider focus:border-green-500 focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 style={{ minHeight: '44px', maxHeight: '200px', boxSizing: 'border-box' }}
               />
               
@@ -557,7 +557,7 @@ export default function ChatInterface({
                   className="absolute bottom-full left-0 mb-2 w-80 bg-surface-elevated border border-divider rounded-lg shadow-2xl p-2 z-50 max-h-64 overflow-y-auto"
                 >
                   <div className="mb-2 px-2">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase">Commands</h3>
+                    <h3 className="text-xs font-semibold text-gray-400">Commands</h3>
                   </div>
                   <div className="space-y-1">
                     {filteredCommands.map((cmd, index) => (
