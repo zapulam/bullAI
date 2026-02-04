@@ -10,18 +10,30 @@ Bullish assistant in progress.
 
 **Prerequisites**
 
-- **[Node.js](https://nodejs.org/)** – for the frontend
-- **[Python 3.12 or higher](https://www.python.org/downloads/)** – for the backend
+- Install **[Node.js](https://nodejs.org/)** – for the frontend
+- Install **[Python 3.12 or higher](https://www.python.org/downloads/)** – for the backend
 
 **Run**
 
-1. One-time setup (install dependencies, create venv, etc.):
+1. Clone repository
+
+   ```bash
+   git clone https://github.com/zapulam/bullAI.git
+   ```
+
+2. Navigate to repository
+
+   ```bash
+   cd bullAI
+   ```
+
+3. One-time setup (install dependencies, create venv, etc.):
 
    ```bash
    python scripts/setup.py
    ```
 
-2. Start the application:
+4. Start the application:
 
    ```bash
    python scripts/start.py
