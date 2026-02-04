@@ -471,14 +471,14 @@ export default function ChatInterface({
           {isWelcomeScreen && (
             <div className="flex flex-col items-center justify-center w-full text-center animate-slide-up">
               <div className="mb-6 relative flex items-center justify-center">
-                <div className="absolute w-70 h-70 rounded-full bg-orange-400/20 blur-3xl" />
+                <div className="absolute w-70 h-70" />
                 <img
                   src={bullImage}
                   alt="bullAI"
-                  className="w-36 h-36 object-contain z-10 drop-shadow-[0_0_12px_rgba(255,140,64,0.35)]"
+                  className="w-36 h-36 object-contain z-10 drop-shadow-[0_0_32px_rgba(255,140,64,0.35)]"
                 />
               </div>
-              <h1 className="text-4xl font-bold mb-4 animate-slide-up animate-delay-100 bg-gradient-to-r from-orange-400 to-green-400 text-transparent bg-clip-text drop-shadow-[0_0_12px_rgba(255,140,64,0.35)]">
+              <h1 className="text-4xl font-bold mb-4 animate-slide-up animate-delay-100 bg-gradient-to-r from-orange-400 to-green-400 text-transparent bg-clip-text drop-shadow-[0_0_32px_rgba(255,140,64,0.7)]">
                 Welcome to bullAI
               </h1>
               <p className="text-lg text-gray-300 mb-2 max-w-2xl animate-slide-up animate-delay-200">
