@@ -34,7 +34,7 @@ from memory import (
     get_session_has_summary,
     update_session_summary
 )
-from repositories import MemoriesRepository
+from repositories import MemoriesRepository, TimeSeriesRepository
 from streaming import stream_result_events
 
 
@@ -43,7 +43,7 @@ class ChatService:
     openai_client: AsyncOpenAI
     alpha_vantage_key: Optional[str] = None
     model: str = "gpt-5-mini"
-    summary_model: str = "gpt-5-nano"
+    summary_model: str = "gpt-4.1-nano"
 
     def __post_init__(self):
         """
@@ -97,7 +97,9 @@ class ChatService:
         response = await self.openai_client.responses.create(
             model=self.summary_model,
             instructions=system_prompt,
-            input=input_text
+            input=input_text,
+            max_output_tokens=20,
+            store=False
         )
 
         return response.output_text.strip().rstrip(string.punctuation)
@@ -122,6 +124,7 @@ class ChatService:
         provider = OpenAIProvider(openai_client=self.openai_client)
 
         memories_repo = MemoriesRepository()
+        time_series_repo = TimeSeriesRepository()
         memories = memories_repo.list_memories()
         memories_by_category = {}
         for memory in memories:
@@ -174,6 +177,16 @@ class ChatService:
             # Stream the response content using stream_events()
             accumulated_text = ""
             async for chunk in stream_result_events(result):
+                if chunk["type"] == "visual_data":
+                    normalized = time_series_repo.normalize_alpha_vantage_time_series(chunk.get("content"))
+                    if normalized:
+                        chunk = {
+                            **chunk,
+                            "content": {
+                                "raw": chunk.get("content"),
+                                "timeSeries": normalized,
+                            },
+                        }
                 if chunk["type"] == "chunk":
                     accumulated_text += chunk["content"]
                 yield chunk

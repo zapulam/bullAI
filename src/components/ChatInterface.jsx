@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { UserMessage, AssistantMessage, SystemMessage, ErrorMessage } from './ChatMessage';
 import { useChat } from '../hooks/useChat';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, X } from 'lucide-react';
 
 const BULL_IMAGES = [
   '/bull.png',
@@ -13,7 +13,13 @@ const TOOL_COMMANDS_ALWAYS_AVAILABLE = [
   { command: 'search_help_docs', description: 'Search bullAI help documentation', key: 'bullAiHelp' },
 ];
 
-export default function ChatInterface({ initialSessionId, isSideNavOpen, onToggleSideNav, onSessionUpdate }) {
+export default function ChatInterface({
+  initialSessionId,
+  isSideNavOpen,
+  onToggleSideNav,
+  onSessionUpdate,
+  onTimeSeriesUpdate,
+}) {
   const [inputValue, setInputValue] = useState('');
   const [bullImage, setbullImage] = useState(BULL_IMAGES[0]);
   const [showCommandsPopup, setShowCommandsPopup] = useState(false);
@@ -26,6 +32,7 @@ export default function ChatInterface({ initialSessionId, isSideNavOpen, onToggl
   const commandsPopupRef = useRef(null);
   const prevIsLoadingRef = useRef(false);
   const hasTriggeredRefetchRef = useRef(false);
+  const lastTimeSeriesRef = useRef(null);
   const { messages, isLoading, sendMessage, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
 
   // Reset refetch trigger when session changes
@@ -40,6 +47,18 @@ export default function ChatInterface({ initialSessionId, isSideNavOpen, onToggl
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (!isHelpOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsHelpOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isHelpOpen]);
 
   useEffect(() => {
     const loadApiKeyStatus = async () => {
@@ -61,6 +80,55 @@ export default function ChatInterface({ initialSessionId, isSideNavOpen, onToggl
 
     loadApiKeyStatus();
   }, []);
+
+  const extractTimeSeries = (content) => {
+    if (!content) return null;
+    if (typeof content === 'object') {
+      return content.timeSeries || content.time_series || null;
+    }
+    if (typeof content === 'string') {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object') {
+          return parsed.timeSeries || parsed.time_series || null;
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (!onTimeSeriesUpdate) return;
+
+    let latestSeries = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (!message?.statusEvents) {
+        continue;
+      }
+      for (let j = message.statusEvents.length - 1; j >= 0; j -= 1) {
+        const event = message.statusEvents[j];
+        if (event?.type !== 'tool_output') {
+          continue;
+        }
+        const series = extractTimeSeries(event.content);
+        if (series) {
+          latestSeries = series;
+          break;
+        }
+      }
+      if (latestSeries) {
+        break;
+      }
+    }
+
+    if (latestSeries && latestSeries !== lastTimeSeriesRef.current) {
+      lastTimeSeriesRef.current = latestSeries;
+      onTimeSeriesUpdate(latestSeries);
+    }
+  }, [messages, onTimeSeriesUpdate]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -302,14 +370,92 @@ export default function ChatInterface({ initialSessionId, isSideNavOpen, onToggl
             <HelpCircle className="w-5.5 h-5.5" />
           </button>
           {isHelpOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-surface-elevated border border-divider rounded-xl shadow-2xl p-3 z-50 text-left">
-              <p className="text-sm text-gray-200 mb-2">
-                bullAI can search its help documentation, explain how data is stored in your database,
-                describe how features work in your codebase, and help troubleshoot issues.
-              </p>
-              <p className="text-xs text-gray-400">
-                Use natural language or type <span className="font-mono text-gray-200">/</span> to see focused commands which will help direct your requests.
-              </p>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="help-dialog-title"
+            >
+              <div
+                className="absolute inset-0 bg-black/60 cursor-default"
+                onClick={() => setIsHelpOpen(false)}
+                role="presentation"
+              />
+              <div
+                className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-surface-elevated border border-divider rounded-xl shadow-2xl flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-divider bg-surface-elevated z-10">
+                  <h2 id="help-dialog-title" className="text-lg font-semibold text-white">
+                    bullAI Help
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsHelpOpen(false)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+                    aria-label="Close help"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="px-5 py-5 space-y-6 text-left">
+                  <section>
+                    <h3 className="text-sm font-semibold text-white mb-2">What bullAI can do</h3>
+                    <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
+                      <li>Search its help documentation</li>
+                      <li>Explain how data is stored in your database</li>
+                      <li>Describe how features work in your codebase</li>
+                      <li>Help troubleshoot issues</li>
+                      <li>Use natural language or type <span className="font-mono text-gray-200">/</span> for focused commands (e.g. search help docs)</li>
+                    </ul>
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-semibold text-white mb-2">Using the chat</h3>
+                    <p className="text-sm text-gray-300 mb-2">
+                      Type in the input box to ask questions. Type <span className="font-mono text-gray-200">/</span> to open the commands list and pick a focused action.
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Available slash commands include: <span className="font-mono text-gray-200">search_help_docs</span> to search bullAI help documentation.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-semibold text-white mb-2">Alpha Vantage and stock data</h3>
+                    <p className="text-sm text-gray-300 mb-2">
+                      bullAI can fetch real market data (stocks, forex, crypto, fundamentals, and more) via Alpha Vantage when an API key is configured.
+                    </p>
+                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">Setup</h4>
+                    <p className="text-sm text-gray-300 mb-2">
+                      Add your Alpha Vantage API key in <strong>Settings</strong> under the Alpha Vantage API Key section. The key is stored locally and is only sent to Alpha Vantage when the AI requests data.
+                    </p>
+                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">How it is connected</h4>
+                    <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside mb-2">
+                      <li>The app uses Alpha Vantage&apos;s <strong>MCP (Model Context Protocol)</strong> server.</li>
+                      <li>When you chat, the backend sends your key to Alpha Vantage&apos;s MCP endpoint so the AI can call their tools.</li>
+                      <li>The AI has access to many tool categories: core stock APIs (quotes, time series, symbol search, market status), options data, Alpha Intelligence (news sentiment, earnings transcripts, gainers/losers, insider transactions, analytics), fundamental data (company overview, income statement, balance sheet, cash flow, earnings, calendars), forex, cryptocurrencies, commodities, economic indicators, and technical indicators.</li>
+                    </ul>
+                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">Time series and charts</h4>
+                    <p className="text-sm text-gray-300">
+                      When the AI returns time series data (e.g. daily or intraday prices), the app normalizes it (open, high, low, close, volume plus symbol and interval) and can display it in the <strong>Time Series Dashboard</strong> so you see charts from your conversations.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-semibold text-white mb-2">Database and data</h3>
+                    <p className="text-sm text-gray-300">
+                      Conversation and app data are stored in a local SQLite database. Settings (including API keys) and chat history are kept on your machine.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-sm font-semibold text-white mb-2">Tips</h3>
+                    <p className="text-sm text-gray-300">
+                      For better market data answers, be specific (e.g. ticker symbol, timeframe). The AI will ask for missing inputs when needed.
+                    </p>
+                  </section>
+                </div>
+              </div>
             </div>
           )}
         </div>

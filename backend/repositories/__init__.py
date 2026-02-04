@@ -1,2 +1,3 @@
 from .memories_repository import MemoriesRepository
 from .settings_repository import SettingsRepository
+from .time_series_repository import TimeSeriesRepository

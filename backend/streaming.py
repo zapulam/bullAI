@@ -4,6 +4,8 @@ Stream parsing functionality for OpenAI RunResult and structured output.
 Written by zapulam
 """
 
+import json
+
 from agents.stream_events import AgentUpdatedStreamEvent, RawResponsesStreamEvent, RunItemStreamEvent
 from dataclasses import dataclass
 from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
@@ -68,7 +70,6 @@ async def stream_result_events(result):
         dict: Formatted event chunks with type and content
     """
     async for event in result.stream_events():
-        # Check most common type first for performance
         if isinstance(event, RawResponsesStreamEvent):
             if isinstance(event.data, ResponseTextDeltaEvent):
                 delta = event.data.delta
@@ -76,21 +77,44 @@ async def stream_result_events(result):
                     "type": "chunk",
                     "content": delta
                 }
+
         elif isinstance(event, RunItemStreamEvent):
             if event.item.type == "tool_call_item":
-                if event.item.raw_item.name and event.item.raw_item.arguments:
-                    tool_name = event.item.raw_item.name
-                    tool_args = event.item.raw_item.arguments
+                if event.item.raw_item.type == 'mcp_call':
+                    if getattr(event.item.raw_item.output, "sample_data", None):
+                        yield {
+                            "type": "visual_data",
+                            "name": event.item.raw_item.arguments.name,
+                            "content": event.item.raw_item.output.sample_data
+                        }
+                    else:
+                        tool_name = (
+                            json.loads(getattr(event.item.raw_item, "arguments", None)).get("tool_name")
+                            or getattr(event.item.raw_item, "name", None)
+                        )
+                        arguments = (
+                            json.loads(getattr(event.item.raw_item, "arguments", None)).get("arguments")
+                            or None
+                        )
+                        yield {
+                            "type": "tool_call",
+                            "name": tool_name,
+                            "arguments": arguments
+                        }
+                elif event.item.raw_item.type == 'function_call':
                     yield {
                         "type": "tool_call",
-                        "content": tool_name,
-                        "arguments": tool_args
+                        "name": tool_name,
+                        "arguments": event.item.raw_item.arguments
                     }
+
             elif event.item.type == "tool_call_output_item":
                 yield {
                     "type": "tool_output",
+                    "name": event.item.name,
                     "content": event.item.output
                 }
+
         elif isinstance(event, AgentUpdatedStreamEvent):
             yield {
                 "type": "agent_update",

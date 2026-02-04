@@ -1,8 +1,20 @@
 import React, { useEffect } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useChatSessions } from '../hooks/useChatSessions';
 
-export default function SideNav({ isOpen, onToggle, onNewChat, onSelectChat, onOpenSettings, onCloseSettings, onRefetchReady }) {
-  const { sessions, loading, refetch } = useChatSessions();
+export default function SideNav({
+  isOpen,
+  onToggle,
+  onNewChat,
+  onSelectChat,
+  onOpenSettings,
+  onCloseSettings,
+  onOpenCharts,
+  onRefetchReady,
+  selectedSessionId,
+  onChatDeleted,
+}) {
+  const { sessions, loading, refetch, deleteSession } = useChatSessions();
 
   // Expose refetch function to parent component
   useEffect(() => {
@@ -39,6 +51,23 @@ export default function SideNav({ isOpen, onToggle, onNewChat, onSelectChat, onO
   const handleSettingsClick = () => {
     if (onOpenSettings) {
       onOpenSettings();
+    }
+  };
+
+  const handleChartsClick = () => {
+    if (onOpenCharts) {
+      onOpenCharts();
+    }
+  };
+
+  const handleDeleteChat = async (e, sessionId) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      await deleteSession(sessionId);
+      onChatDeleted?.(sessionId);
+    } catch (err) {
+      console.error('Error deleting chat:', err);
     }
   };
 
@@ -96,6 +125,22 @@ export default function SideNav({ isOpen, onToggle, onNewChat, onSelectChat, onO
           <span className={`text-sm font-medium whitespace-nowrap transition-all duration-300 ${isOpen ? 'opacity-100 max-w-full' : 'opacity-0 max-w-0 overflow-hidden'}`}>Search chats</span>
         </button>
       </div>
+
+      {/* Charts Button */}
+      <div className="px-1.5 py-1">
+        <button
+          onClick={handleChartsClick}
+          className="flex items-center space-x-2 px-3 py-3 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors duration-200 w-full cursor-pointer"
+          title="Charts"
+        >
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19h16M6 16l3-6 4 3 5-8" />
+          </svg>
+          <span className={`text-sm font-medium whitespace-nowrap transition-all duration-300 ${isOpen ? 'opacity-100 max-w-full' : 'opacity-0 max-w-0 overflow-hidden'}`}>
+            Charts
+          </span>
+        </button>
+      </div>
       
       {/* Chat History */}
       <div className="flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden border-t border-divider scrollbar-none">
@@ -110,16 +155,32 @@ export default function SideNav({ isOpen, onToggle, onNewChat, onSelectChat, onO
               <p className="text-sm text-gray-500 italic px-2 whitespace-nowrap text-left">No previous chats</p>
             ) : (
               <div className="space-y-1">
-                {sessions.map((session) => (
-                  <button
-                    key={session.conversation_id || session.session_id}
-                    onClick={() => onSelectChat && onSelectChat(session.conversation_id || session.session_id)}
-                    className="w-full text-left px-2 py-2 rounded-lg text-sm text-gray-300 hover:bg-surface-hover hover:text-white transition-colors duration-200 truncate cursor-pointer"
-                    title={session.summary || ''}
-                  >
-                    {session.summary || ''}
-                  </button>
-                ))}
+                {sessions.map((session) => {
+                  const sessionId = session.conversation_id || session.session_id;
+                  return (
+                    <div
+                      key={sessionId}
+                      className="group flex items-center rounded-lg hover:bg-surface-hover transition-colors duration-200 min-w-0"
+                    >
+                      <button
+                        onClick={() => onSelectChat && onSelectChat(sessionId)}
+                        className="flex-1 min-w-0 text-left px-2 py-2 rounded-lg text-sm text-gray-300 hover:text-white transition-colors duration-200 truncate cursor-pointer"
+                        title={session.summary || ''}
+                      >
+                        {session.summary || ''}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteChat(e, sessionId)}
+                        className="p-1.5 rounded text-gray-400 hover:text-red-400 hover:bg-surface-hover opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 cursor-pointer"
+                        aria-label="Delete chat"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -5,7 +5,7 @@ Written by: zapulam
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, Any, Literal
+from typing import Optional, Any, Literal, List
 
 
 # Chat Context
@@ -78,3 +78,27 @@ class AlphaVantageKeyRequest(BaseModel):
 class AlphaVantageKeyResponse(BaseModel):
     has_key: bool
     masked_key: Optional[str] = None
+
+
+# Time series models
+class TimeSeriesMeta(BaseModel):
+    symbol: Optional[str] = None
+    interval: Optional[str] = None
+    lastRefreshed: Optional[str] = None
+    timeZone: Optional[str] = None
+    outputSize: Optional[str] = None
+    source: Optional[str] = None
+
+
+class TimeSeriesPoint(BaseModel):
+    timestamp: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: Optional[float] = None
+    volume: Optional[int] = None
+
+
+class TimeSeriesResponse(BaseModel):
+    meta: TimeSeriesMeta
+    points: List[TimeSeriesPoint]

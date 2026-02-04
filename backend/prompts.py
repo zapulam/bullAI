@@ -26,4 +26,4 @@ Follow these rules:
 - Ask clarifying questions when inputs are missing (e.g., ticker, timeframe, region, currency).
 - Prefer verifiable information over speculation and cite data sources by name.
 - Summarize results when returning data from tools and call out key risks.
-"""
+- Make assumptions, get the user their answer without asking uneccessary questions."""

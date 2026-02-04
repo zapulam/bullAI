@@ -391,6 +391,23 @@ async def get_conversations() -> List[Dict[str, Any]]:
     return await asyncio.to_thread(_fetch_conversations)
 
 
+# Delete Conversation ---------------------------------------------------------------------------------------------------------------------
+async def delete_conversation(conversation_id: str) -> None:
+    """
+    Delete a conversation and all its messages from the database.
+
+    Args:
+        conversation_id: The conversation/session ID to delete.
+    """
+    def _delete_sync() -> None:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            conn.execute("DELETE FROM messages WHERE session_id = ?", (conversation_id,))
+            conn.execute("DELETE FROM sessions WHERE session_id = ?", (conversation_id,))
+            conn.commit()
+
+    await asyncio.to_thread(_delete_sync)
+
+
 # Get Messages for Conversation -----------------------------------------------------------------------------------------------------------
 async def get_conversation_messages(
         conversation_id: str,

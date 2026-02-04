@@ -43,6 +43,15 @@ export const useChatSessions = () => {
     }
   }, []);
 
+  const deleteSession = useCallback(async (conversationId) => {
+    const url = buildApiUrl(`${API_ENDPOINTS.CHAT_SESSION_DELETE}/${conversationId}`);
+    const response = await fetch(url, { method: 'DELETE' });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    await fetchSessions();
+  }, [fetchSessions]);
+
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
@@ -52,6 +61,7 @@ export const useChatSessions = () => {
     loading,
     error,
     refetch: fetchSessions,
+    deleteSession,
   };
 };
 

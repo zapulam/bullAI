@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from openai import AsyncOpenAI
 from typing import Any, Dict, List, AsyncGenerator, Optional
 
@@ -32,6 +32,7 @@ from models import (
 from memory import (
     get_conversations,
     get_conversation_messages,
+    delete_conversation,
     initialize_sqlite_db,
 )
 from repositories import MemoriesRepository, SettingsRepository
@@ -175,7 +176,7 @@ async def create_chat(
                     parser.reset()
                     event = ChatToolInput(
                         type="tool_call",
-                        tool_name=chunk.get("content", ""),
+                        tool_name=chunk.get("name", ""),
                         content=chunk.get("arguments", {}),
                     )
                     yield f"data: {event.model_dump_json()}\n\n"
@@ -188,10 +189,9 @@ async def create_chat(
 
                 elif chunk.get("type") == "tool_output":
                     tool_output_content = chunk.get("content", "")
-                    tool_name = last_tool_name or "unknown_tool"
                     content = tool_output_content
                     if isinstance(tool_output_content, dict):
-                        tool_name = tool_output_content.get("name", tool_name)
+                        tool_name = tool_output_content.get("name", last_tool_name)
                         content = tool_output_content.get("content", tool_output_content)
 
                     event = ChatToolOutput(
@@ -262,6 +262,25 @@ async def get_sessions(
     """
     sessions = await get_conversations()
     return {"sessions": sessions}
+
+
+@app.delete("/chat/sessions/{conversation_id}")
+async def delete_session(
+    conversation_id: str,
+    rt: AppRuntime = Depends(get_runtime),
+) -> Response:
+    """
+    Delete a chat session and all its messages.
+
+    Args:
+        conversation_id: Session identifier to delete.
+        rt: AppRuntime dependency.
+
+    Returns:
+        204 No Content on success.
+    """
+    await delete_conversation(conversation_id)
+    return Response(status_code=204)
 
 
 @app.get("/chat/history")

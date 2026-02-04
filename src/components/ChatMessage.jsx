@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import TimeSeriesChart from './TimeSeriesChart';
 
 // Format UTC timestamps from the backend into the user's local time.
 // When isHistory is true, show date + time (MM/DD/YY, HH:MM); otherwise time only.
@@ -108,11 +109,6 @@ export function AssistantMessage({ message, isLoading = false }) {
       setIsThoughtExpanded(false);
     }
   }, [hasResponse]);
-  
-  const truncateText = (text, maxLength = 50) => {
-    if (!text || text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
-  };
 
   // Truncate content to first 5 lines
   const truncateToLines = (content, maxLines = 5) => {
@@ -138,6 +134,58 @@ export function AssistantMessage({ message, isLoading = false }) {
     });
   };
 
+  const parseNestedJson = (obj) => {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj === 'string') {
+      const trimmed = obj.trim();
+      if (!trimmed) return obj;
+      try {
+        return parseNestedJson(JSON.parse(trimmed));
+      } catch (e) {
+        return obj;
+      }
+    }
+    if (Array.isArray(obj)) return obj.map(parseNestedJson);
+    if (typeof obj === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        out[k] = parseNestedJson(v);
+      }
+      return out;
+    }
+    return obj;
+  };
+
+  const formatToolCallArguments = (value) => {
+    if (value === null || value === undefined) return null;
+    const raw = typeof value === 'string' ? (value.trim() ? (() => { try { return JSON.parse(value); } catch (e) { return null; } })() : null) : value;
+    if (raw === null || raw === undefined) return null;
+    const parsed = parseNestedJson(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    if (Array.isArray(parsed) ? parsed.length === 0 : Object.keys(parsed).length === 0) return null;
+    try {
+      return JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const getToolCallDetails = (event) => {
+    const toolName =
+      (typeof event.toolName === 'string' && event.toolName.trim()) ||
+      'Unknown tool';
+    const argsPretty = formatToolCallArguments(event.arguments);
+    return {
+      toolName,
+      argsPretty,
+    };
+  };
+
+  const latestToolCall = React.useMemo(
+    () => statusEvents.filter((e) => e.type === 'tool_call').pop(),
+    [statusEvents]
+  );
+
   // Recursively unescape and format nested JSON strings
   const unescapeAndFormatJSON = (obj) => {
     if (typeof obj === 'string') {
@@ -161,6 +209,43 @@ export function AssistantMessage({ message, isLoading = false }) {
     return obj;
   };
 
+  const parseJsonIfString = (value) => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const extractTimeSeries = (content) => {
+    if (!content) return null;
+    if (typeof content === 'object' && content !== null) {
+      return content.timeSeries || content.time_series || null;
+    }
+    const parsed = parseJsonIfString(content);
+    if (parsed && typeof parsed === 'object') {
+      return parsed.timeSeries || parsed.time_series || null;
+    }
+    return null;
+  };
+
+  const timeSeries = React.useMemo(() => {
+    for (let i = statusEvents.length - 1; i >= 0; i -= 1) {
+      const event = statusEvents[i];
+      if (event?.type !== 'tool_output') {
+        continue;
+      }
+      const series = extractTimeSeries(event.content);
+      if (series) {
+        return series;
+      }
+    }
+    return null;
+  }, [statusEvents]);
+
   // Format JSON content for display
   const formatContent = (content, eventType) => {
     if (eventType !== 'tool_output') {
@@ -168,12 +253,15 @@ export function AssistantMessage({ message, isLoading = false }) {
     }
 
     let contentToFormat = content;
+    if (content && typeof content === 'object' && content.timeSeries && content.raw !== undefined) {
+      contentToFormat = content.raw;
+    }
     
     // Handle string content
-    if (typeof content === 'string') {
+    if (typeof contentToFormat === 'string') {
       // Remove "Tool output: " prefix if present
-      if (content.startsWith('Tool output: ')) {
-        contentToFormat = content.substring('Tool output: '.length);
+      if (contentToFormat.startsWith('Tool output: ')) {
+        contentToFormat = contentToFormat.substring('Tool output: '.length);
       }
       
       // Try to parse as JSON
@@ -186,7 +274,7 @@ export function AssistantMessage({ message, isLoading = false }) {
         // If parsing fails, check if it's already an object stringified
         // Try to parse the original content
         try {
-          const parsed = JSON.parse(content);
+          const parsed = JSON.parse(contentToFormat);
           const unescaped = unescapeAndFormatJSON(parsed);
           return JSON.stringify(unescaped, null, 2);
         } catch (e2) {
@@ -197,13 +285,13 @@ export function AssistantMessage({ message, isLoading = false }) {
     }
     
     // Handle object content
-    if (typeof content === 'object' && content !== null) {
+    if (typeof contentToFormat === 'object' && contentToFormat !== null) {
       try {
         // Recursively unescape nested JSON strings
-        const unescaped = unescapeAndFormatJSON(content);
+        const unescaped = unescapeAndFormatJSON(contentToFormat);
         return JSON.stringify(unescaped, null, 2);
       } catch (e) {
-        return String(content);
+        return String(contentToFormat);
       }
     }
     
@@ -265,19 +353,22 @@ export function AssistantMessage({ message, isLoading = false }) {
                   </div>
                   <span className="text-sm text-gray-400">Thinking</span>
                 </div>
-                {statusEvents.length > 0 && (
-                  <div className="mt-3 space-y-1.5 flex flex-col">
-                    {statusEvents.map((event, index) => (
-                      <div
-                        key={index}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs w-fit ${getStatusColor(event.type)} animate-fade-in`}
-                      >
-                        {getStatusIcon(event.type)}
-                        <span className="text-left">{truncateText(event.content)}</span>
+                {latestToolCall && (() => {
+                  const details = getToolCallDetails(latestToolCall);
+                  return (
+                    <div className="mt-3">
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
+                        {getStatusIcon('tool_call')}
+                        <div className="flex flex-col text-left min-w-0">
+                          <span className="text-gray-200">Tool: {details.toolName}</span>
+                          {details.argsPretty && (
+                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <>
@@ -304,19 +395,22 @@ export function AssistantMessage({ message, isLoading = false }) {
                   </div>
                 )}
 
-                {statusEvents.length > 0 && isLoading && (
-                  <div className="mb-3 space-y-1.5 flex flex-col">
-                    {statusEvents.map((event, index) => (
-                      <div
-                        key={index}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs w-fit ${getStatusColor(event.type)} animate-fade-in`}
-                      >
-                        {getStatusIcon(event.type)}
-                        <span className="text-left">{truncateText(event.content)}</span>
+                {latestToolCall && isLoading && (() => {
+                  const details = getToolCallDetails(latestToolCall);
+                  return (
+                    <div className="mb-3">
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
+                        {getStatusIcon('tool_call')}
+                        <div className="flex flex-col text-left min-w-0">
+                          <span className="text-gray-200">Tool: {details.toolName}</span>
+                          {details.argsPretty && (
+                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
                 <div className="text-sm leading-normal break-words prose prose-invert prose-sm w-full text-left [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
@@ -377,6 +471,11 @@ export function AssistantMessage({ message, isLoading = false }) {
                     {message.content}
                   </ReactMarkdown>
                 </div>
+                {timeSeries && (
+                  <div className="mt-4">
+                    <TimeSeriesChart series={timeSeries} />
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -407,6 +506,28 @@ export function AssistantMessage({ message, isLoading = false }) {
           {isStatusExpanded && statusEvents.length > 0 && message.content && (
             <div className="mt-2 space-y-1.5 animate-fade-in flex flex-col">
               {statusEvents.map((event, index) => {
+                if (event.type === 'tool_call') {
+                  const details = getToolCallDetails(event);
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit ${getStatusColor(event.type)}`}
+                    >
+                      <div className="flex-shrink-0 mt-0.5">
+                        {getStatusIcon(event.type)}
+                      </div>
+                      <div className="flex flex-col text-left">
+                        <span className="text-gray-200">Tool: {details.toolName}</span>
+                        {details.argsPretty && (
+                          <pre className="mt-1 text-xs font-mono whitespace-pre-wrap break-words text-gray-100">
+                            {details.argsPretty}
+                          </pre>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 const formattedContent = formatContent(event.content, event.type);
                 // Check if content is JSON: either it's an object, or it's a formatted string that looks like JSON
                 const isJSON = event.type === 'tool_output' && (

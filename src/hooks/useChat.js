@@ -324,6 +324,8 @@ export const useChat = (initialSessionId = null) => {
                         statusEvents: [...(msg.statusEvents || []), {
                           type: data.type,
                           content: data.content,
+                          toolName: data.tool_name ?? data.name,
+                          arguments: data.arguments ?? data.content,
                           timestamp: new Date().toISOString(),
                         }]
                       }
