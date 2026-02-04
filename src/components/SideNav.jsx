@@ -143,7 +143,7 @@ export default function SideNav({
       </div>
       
       {/* Chat History */}
-      <div className="flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden border-t border-divider scrollbar-none">
+      <div className="font-sidenav-chat flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden border-t border-divider scrollbar-none">
         {isOpen ? (
           <div className="min-w-0 max-w-full">
             <h3 className="text-xs font-semibold text-gray-400 mb-2 whitespace-nowrap text-left">

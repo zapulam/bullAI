@@ -381,12 +381,15 @@ export default function ChatInterface({
                 onClick={() => setIsHelpOpen(false)}
                 role="presentation"
               />
+              <div className="relative w-full max-w-4xl max-h-[90vh] flex justify-center items-start">
+                <div className="absolute top-0 left-0 w-64 h-64 rounded-full bg-orange-400/20 blur-3xl pointer-events-none" aria-hidden="true" />
+                <div className="absolute bottom-0 right-0 w-64 h-64 rounded-full bg-green-400/20 blur-3xl pointer-events-none" aria-hidden="true" />
               <div
-                className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-surface-elevated border border-divider rounded-xl shadow-2xl flex flex-col"
+                className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-surface-elevated border border-divider rounded-xl shadow-[inset_0_0_30px_rgba(34,197,94,0.1),inset_0_0_40px_rgba(255,140,64,0.06),0_25px_50px_-12px_rgba(0,0,0,0.5)] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-divider bg-surface-elevated z-10">
-                  <h2 id="help-dialog-title" className="text-lg font-semibold text-white">
+                  <h2 id="help-dialog-title" className="text-lg font-semibold bg-gradient-to-r from-orange-400 to-green-400 text-transparent bg-clip-text drop-shadow-[0_0_12px_rgba(255,140,64,0.35)]">
                     bullAI Help
                   </h2>
                   <button
@@ -400,18 +403,18 @@ export default function ChatInterface({
                 </div>
                 <div className="px-5 py-5 space-y-6 text-left">
                   <section>
-                    <h3 className="text-sm font-semibold text-white mb-2">What bullAI can do</h3>
+                    <h3 className="text-lg font-semibold text-white mb-2">What can bullAI do?</h3>
                     <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
-                      <li>Search its help documentation</li>
-                      <li>Explain how data is stored in your database</li>
-                      <li>Describe how features work in your codebase</li>
-                      <li>Help troubleshoot issues</li>
+                      <li>Search its own help documentation</li>
+                      <li>Search financial literature to answer your questions</li>
+                      <li>Look up historical financial data</li>
+                      <li>Display detailed charts and visualizations</li>
                       <li>Use natural language or type <span className="font-mono text-gray-200">/</span> for focused commands (e.g. search help docs)</li>
                     </ul>
                   </section>
 
                   <section>
-                    <h3 className="text-sm font-semibold text-white mb-2">Using the chat</h3>
+                    <h3 className="text-m font-semibold text-white mb-2">Using the chat</h3>
                     <p className="text-sm text-gray-300 mb-2">
                       Type in the input box to ask questions. Type <span className="font-mono text-gray-200">/</span> to open the commands list and pick a focused action.
                     </p>
@@ -421,21 +424,21 @@ export default function ChatInterface({
                   </section>
 
                   <section>
-                    <h3 className="text-sm font-semibold text-white mb-2">Alpha Vantage and stock data</h3>
+                    <h3 className="text-m font-semibold text-white mb-2">Alpha Vantage and stock data</h3>
                     <p className="text-sm text-gray-300 mb-2">
                       bullAI can fetch real market data (stocks, forex, crypto, fundamentals, and more) via Alpha Vantage when an API key is configured.
                     </p>
-                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">Setup</h4>
+                    <h4 className="text-s font-semibold text-gray-200 mt-3 mb-1">Setup</h4>
                     <p className="text-sm text-gray-300 mb-2">
                       Add your Alpha Vantage API key in <strong>Settings</strong> under the Alpha Vantage API Key section. The key is stored locally and is only sent to Alpha Vantage when the AI requests data.
                     </p>
-                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">How it is connected</h4>
+                    <h4 className="text-s font-semibold text-gray-200 mt-3 mb-1">How it is connected</h4>
                     <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside mb-2">
                       <li>The app uses Alpha Vantage&apos;s <strong>MCP (Model Context Protocol)</strong> server.</li>
                       <li>When you chat, the backend sends your key to Alpha Vantage&apos;s MCP endpoint so the AI can call their tools.</li>
                       <li>The AI has access to many tool categories: core stock APIs (quotes, time series, symbol search, market status), options data, Alpha Intelligence (news sentiment, earnings transcripts, gainers/losers, insider transactions, analytics), fundamental data (company overview, income statement, balance sheet, cash flow, earnings, calendars), forex, cryptocurrencies, commodities, economic indicators, and technical indicators.</li>
                     </ul>
-                    <h4 className="text-xs font-semibold text-gray-200 mt-3 mb-1">Time series and charts</h4>
+                    <h4 className="text-s font-semibold text-gray-200 mt-3 mb-1">Time series and charts</h4>
                     <p className="text-sm text-gray-300">
                       When the AI returns time series data (e.g. daily or intraday prices), the app normalizes it (open, high, low, close, volume plus symbol and interval) and can display it in the <strong>Time Series Dashboard</strong> so you see charts from your conversations.
                     </p>
@@ -455,6 +458,7 @@ export default function ChatInterface({
                     </p>
                   </section>
                 </div>
+              </div>
               </div>
             </div>
           )}
@@ -478,7 +482,7 @@ export default function ChatInterface({
                 Welcome to bullAI
               </h1>
               <p className="text-lg text-gray-300 mb-2 max-w-2xl animate-slide-up animate-delay-200">
-                Your AI finance helper for late-night ideas and steady guidance.
+                Your AI finance helper for steady guidance.
               </p>
               <p className="text-base text-gray-400 mb-8 max-w-2xl animate-slide-up animate-delay-300">
                 I'm here to help. Ask away and I'll walk with you step by step.
