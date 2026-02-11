@@ -21,9 +21,8 @@ from typing import Any, Dict, List, AsyncGenerator, Optional
 from service import ChatService
 from models import (
     TurnRequest,
-    MemoryCreateRequest,
-    MemoryUpdateRequest,
-    MemoryResponse,
+    MemoryGetResponse,
+    MemoryPutRequest,
     OpenAIKeyRequest,
     OpenAIKeyResponse,
     AlphaVantageKeyRequest,
@@ -35,7 +34,7 @@ from memory import (
     delete_conversation,
     initialize_sqlite_db,
 )
-from repositories import MemoriesRepository, SettingsRepository
+from repositories import SettingsRepository
 from settings import settings
 from streaming import (
     ChatChunkEvent,
@@ -166,10 +165,7 @@ async def create_chat(
         try:
             async for chunk in rt.chat_service.run_turn(
                 conversation_id=conversation_id,
-                user_input=req.user_input,
-                # context = ChatContext(
-                #         api_key=api_key
-                #     )
+                user_input=req.user_input
             ):
                 if chunk.get("type") == "tool_call":
                     last_tool_name = chunk.get("content")
@@ -508,34 +504,18 @@ async def clear_alpha_vantage_api_key(request: Request) -> AlphaVantageKeyRespon
     )
 
 
-@app.get("/settings/memories", response_model=List[MemoryResponse])
-async def list_memories() -> List[MemoryResponse]:
-    repo = MemoriesRepository()
-    return repo.list_memories()
+@app.get("/settings/memories", response_model=MemoryGetResponse)
+async def get_memory() -> MemoryGetResponse:
+    repo = SettingsRepository()
+    content = repo.get_user_memory()
+    return MemoryGetResponse(content=content or "")
 
 
-@app.post("/settings/memories", response_model=MemoryResponse)
-async def create_memory(req: MemoryCreateRequest) -> MemoryResponse:
-    repo = MemoriesRepository()
-    return repo.create_memory(category=req.category, content=req.content)
-
-
-@app.put("/settings/memories/{memory_id}", response_model=MemoryResponse)
-async def update_memory(memory_id: int, req: MemoryUpdateRequest) -> MemoryResponse:
-    repo = MemoriesRepository()
-    updated = repo.update_memory(memory_id=memory_id, category=req.category, content=req.content)
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return updated
-
-
-@app.delete("/settings/memories/{memory_id}")
-async def delete_memory(memory_id: int) -> Dict[str, Any]:
-    repo = MemoriesRepository()
-    deleted = repo.delete_memory(memory_id=memory_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return {"deleted": True}
+@app.put("/settings/memories", response_model=MemoryGetResponse)
+async def put_memory(req: MemoryPutRequest) -> MemoryGetResponse:
+    repo = SettingsRepository()
+    repo.set_user_memory(req.content)
+    return MemoryGetResponse(content=req.content)
 
 
 @app.get("/health")

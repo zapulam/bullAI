@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Lock, Unlock, Pencil, Trash2, Plus } from 'lucide-react';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 export default function Settings() {
@@ -19,19 +18,10 @@ export default function Settings() {
   const [alphaVantageKeyClearing, setAlphaVantageKeyClearing] = useState(false);
   const [alphaVantageKeyError, setAlphaVantageKeyError] = useState(null);
 
-  const [memories, setMemories] = useState([]);
-  const [memoriesLoading, setMemoriesLoading] = useState(false);
-  const [memoriesError, setMemoriesError] = useState(null);
-  const [newMemory, setNewMemory] = useState({ category: '', content: '' });
-  const [editingMemoryId, setEditingMemoryId] = useState(null);
-  const [editingMemory, setEditingMemory] = useState({ category: '', content: '' });
-
-  const [sectionOpen, setSectionOpen] = useState({
-    openai: false,
-    alphaVantage: false,
-    memories: false,
-  });
-  const [sensitiveVisibility, setSensitiveVisibility] = useState({});
+  const [memoryContent, setMemoryContent] = useState('');
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memorySaving, setMemorySaving] = useState(false);
+  const [memoryError, setMemoryError] = useState(null);
 
   useEffect(() => {
     const loadOpenAIKey = async () => {
@@ -76,67 +66,28 @@ export default function Settings() {
       }
     };
 
-    const loadMemories = async () => {
-      setMemoriesLoading(true);
-      setMemoriesError(null);
+    const loadMemory = async () => {
+      setMemoryLoading(true);
+      setMemoryError(null);
       try {
         const url = buildApiUrl(API_ENDPOINTS.SETTINGS_MEMORIES);
         const response = await fetch(url);
         if (!response.ok) {
-          throw new Error(`Failed to load memories: ${response.statusText}`);
+          throw new Error(`Failed to load memory: ${response.statusText}`);
         }
         const data = await response.json();
-        setMemories(data);
+        setMemoryContent(data.content || '');
       } catch (err) {
-        setMemoriesError(err.message);
+        setMemoryError(err.message);
       } finally {
-        setMemoriesLoading(false);
+        setMemoryLoading(false);
       }
     };
 
-    loadMemories();
+    loadMemory();
     loadOpenAIKey();
     loadAlphaVantageKey();
   }, []);
-
-  const updateConnectionField = (type, field, value) => {
-    setConnections((prev) => ({
-      ...prev,
-      [type]: {
-        ...prev[type],
-        [field]: value,
-      },
-    }));
-  };
-
-  const toggleSection = (key) => {
-    setSectionOpen((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const toggleSensitiveVisibility = (key) => {
-    setSensitiveVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const renderSensitiveInput = ({ id, value, onChange, placeholder }) => (
-    <div className="relative">
-      <input
-        type={sensitiveVisibility[id] ? 'text' : 'password'}
-        className="w-full px-3 py-2 pr-12 bg-surface border border-divider rounded-lg text-white text-sm"
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-      />
-      <button
-        type="button"
-        onClick={() => toggleSensitiveVisibility(id)}
-        aria-pressed={Boolean(sensitiveVisibility[id])}
-        aria-label={sensitiveVisibility[id] ? 'Hide value' : 'Show value'}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1.5"
-      >
-        {sensitiveVisibility[id] ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-      </button>
-    </div>
-  );
 
   const handleSaveOpenAIKey = async () => {
     if (!openaiKey.trim()) {
@@ -242,386 +193,138 @@ export default function Settings() {
     }
   };
 
-  const startEditMemory = (memory) => {
-    setEditingMemoryId(memory.id);
-    setEditingMemory({
-      category: memory.category || '',
-      content: memory.content || '',
-    });
-  };
-
-  const cancelEditMemory = () => {
-    setEditingMemoryId(null);
-    setEditingMemory({ category: '', content: '' });
-  };
-
-  const handleCreateMemory = async () => {
-    if (!newMemory.content.trim()) {
-      return;
-    }
+  const handleSaveMemory = async () => {
+    setMemorySaving(true);
+    setMemoryError(null);
     try {
       const url = buildApiUrl(API_ENDPOINTS.SETTINGS_MEMORIES);
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: newMemory.category.trim() || null,
-          content: newMemory.content.trim(),
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to create memory: ${response.statusText}`);
-      }
-      const created = await response.json();
-      setMemories((prev) => [created, ...prev]);
-      setNewMemory({ category: '', content: '' });
-    } catch (err) {
-      setMemoriesError(err.message);
-    }
-  };
-
-  const handleUpdateMemory = async () => {
-    if (!editingMemoryId || !editingMemory.content.trim()) {
-      return;
-    }
-    try {
-      const url = buildApiUrl(`${API_ENDPOINTS.SETTINGS_MEMORIES}/${editingMemoryId}`);
-      const response = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: editingMemory.category.trim() || null,
-          content: editingMemory.content.trim(),
-        }),
+        body: JSON.stringify({ content: memoryContent }),
       });
       if (!response.ok) {
-        throw new Error(`Failed to update memory: ${response.statusText}`);
+        throw new Error(`Failed to save memory: ${response.statusText}`);
       }
-      const updated = await response.json();
-      setMemories((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      cancelEditMemory();
     } catch (err) {
-      setMemoriesError(err.message);
+      setMemoryError(err.message);
+    } finally {
+      setMemorySaving(false);
     }
   };
-
-  const handleDeleteMemory = async (memoryId) => {
-    try {
-      const url = buildApiUrl(`${API_ENDPOINTS.SETTINGS_MEMORIES}/${memoryId}`);
-      const response = await fetch(url, { method: 'DELETE' });
-      if (!response.ok) {
-        throw new Error(`Failed to delete memory: ${response.statusText}`);
-      }
-      setMemories((prev) => prev.filter((item) => item.id !== memoryId));
-    } catch (err) {
-      setMemoriesError(err.message);
-    }
-  };
-
-  const groupedMemories = memories.reduce((groups, memory) => {
-    const category = (memory.category || 'General').trim() || 'General';
-    if (!groups[category]) {
-      groups[category] = [];
-    }
-    groups[category].push(memory);
-    return groups;
-  }, {});
-  Object.values(groupedMemories).forEach((items) => {
-    items.sort((a, b) => {
-      if (a.created_at && b.created_at) {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      return (a.id || 0) - (b.id || 0);
-    });
-  });
-  const memoryCategories = Object.keys(groupedMemories).sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="h-full w-full flex flex-col bg-surface overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="space-y-4 max-w-6xl mx-auto">
-          <div className="text-left bg-surface-elevated/40 rounded-2xl mb-2">
-            <button
-              type="button"
-              onClick={() => toggleSection('openai')}
-              aria-expanded={sectionOpen.openai}
-              aria-controls="settings-openai"
-              className="w-full text-left px-5 py-4 flex items-center justify-between cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-1 rounded-full bg-green-500/60" />
-                <div>
-                  <h2 className="text-lg font-semibold text-white">OpenAI API Key</h2>
-                  <p className="text-sm text-gray-400">
-                    Add your OpenAI API key to enable chat features.
+      <div className="flex-1 overflow-y-auto px-6 py-6 text-left">
+        <div className="space-y-6 max-w-6xl mx-auto">
+          <section className="bg-surface-elevated/40 rounded-2xl p-5">
+            <h2 className="text-2xl font-semibold text-white mb-2">Credentials</h2>
+            <p className="text-xs text-gray-400 border-b border-divider pb-6 mb-6">
+                    Your keys are stored securely in the local database and are not displayed in full.
                   </p>
-                </div>
-              </div>
-              {sectionOpen.openai ? (
-                <ChevronDown className="text-gray-400" size={18} />
-              ) : (
-                <ChevronRight className="text-gray-400" size={18} />
-              )}
-            </button>
-            {sectionOpen.openai ? (
-              <div id="settings-openai" className="px-5 pb-5 space-y-3">
+            <div className="space-y-6">
+              <div className="space-y-3 pb-6 border-b border-divider">
+                <h3 className="text-sm font-medium text-white">OpenAI API Key</h3>
+                <p className="text-xs text-gray-400">Add your OpenAI API key to enable chat features.</p>
                 {openaiKeyLoading ? (
                   <p className="text-sm text-gray-500 italic">Loading OpenAI key status...</p>
                 ) : null}
                 {openaiKeyError ? <p className="text-sm text-red-400">{openaiKeyError}</p> : null}
-                <div className="bg-surface rounded-xl p-4 space-y-3">
-                  <p className="text-sm text-gray-400">
-                    Status:{' '}
-                    <span className="text-white">
-                      {openaiKeyStatus.hasKey
-                        ? `Saved ${openaiKeyStatus.maskedKey ? `(${openaiKeyStatus.maskedKey})` : ''}`
-                        : 'Not set'}
-                    </span>
-                  </p>
-                  <div className="">
-                    {renderSensitiveInput({
-                      id: 'openai_api_key',
-                      placeholder: 'Enter OpenAI API key',
-                      value: openaiKey,
-                      onChange: (e) => setOpenaiKey(e.target.value),
-                    })}
-                  </div>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                    <button
-                      onClick={handleSaveOpenAIKey}
-                      disabled={openaiKeySaving}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                    >
-                      {openaiKeySaving ? 'Saving...' : 'Save Key'}
-                    </button>
-                    <button
-                      onClick={handleClearOpenAIKey}
-                      disabled={openaiKeyClearing || !openaiKeyStatus.hasKey}
-                      className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                    >
-                      {openaiKeyClearing ? 'Clearing...' : 'Clear Key'}
-                    </button>
-                    <p className="text-xs text-gray-500">
-                      Your key is stored securely in the local database and is not displayed in full.
-                    </p>
-                  </div>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
+                  placeholder={
+                    openaiKeyStatus.maskedKey || 'Enter OpenAI API key'
+                  }
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                />
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <button
+                    onClick={handleSaveOpenAIKey}
+                    disabled={openaiKeySaving || !openaiKey.trim()}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                  >
+                    {openaiKeySaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleClearOpenAIKey}
+                    disabled={openaiKeyClearing || !openaiKeyStatus.hasKey}
+                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                  >
+                    {openaiKeyClearing ? 'Clearing...' : 'Clear'}
+                  </button>
+                  
                 </div>
               </div>
-            ) : null}
-          </div>
-
-          <div className="text-left bg-surface-elevated/40 rounded-2xl mb-2">
-            <button
-              type="button"
-              onClick={() => toggleSection('alphaVantage')}
-              aria-expanded={sectionOpen.alphaVantage}
-              aria-controls="settings-alpha-vantage"
-              className="w-full text-left px-5 py-4 flex items-center justify-between cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-1 rounded-full bg-green-500/60" />
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Alpha Vantage API Key</h2>
-                  <p className="text-sm text-gray-400">
-                    Add your Alpha Vantage API key to enable market data tools.
-                  </p>
-                </div>
-              </div>
-              {sectionOpen.alphaVantage ? (
-                <ChevronDown className="text-gray-400" size={18} />
-              ) : (
-                <ChevronRight className="text-gray-400" size={18} />
-              )}
-            </button>
-            {sectionOpen.alphaVantage ? (
-              <div id="settings-alpha-vantage" className="px-5 pb-5 space-y-3">
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-white">Alpha Vantage API Key</h3>
+                <p className="text-xs text-gray-400">Add your Alpha Vantage API key to enable market data tools.</p>
                 {alphaVantageKeyLoading ? (
                   <p className="text-sm text-gray-500 italic">Loading Alpha Vantage key status...</p>
                 ) : null}
                 {alphaVantageKeyError ? <p className="text-sm text-red-400">{alphaVantageKeyError}</p> : null}
-                <div className="bg-surface rounded-xl p-4 space-y-3">
-                  <p className="text-sm text-gray-400">
-                    Status:{' '}
-                    <span className="text-white">
-                      {alphaVantageKeyStatus.hasKey
-                        ? `Saved ${alphaVantageKeyStatus.maskedKey ? `(${alphaVantageKeyStatus.maskedKey})` : ''}`
-                        : 'Not set'}
-                    </span>
-                  </p>
-                  <div className="">
-                    {renderSensitiveInput({
-                      id: 'alpha_vantage_api_key',
-                      placeholder: 'Enter Alpha Vantage API key',
-                      value: alphaVantageKey,
-                      onChange: (e) => setAlphaVantageKey(e.target.value),
-                    })}
-                  </div>
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                    <button
-                      onClick={handleSaveAlphaVantageKey}
-                      disabled={alphaVantageKeySaving}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                    >
-                      {alphaVantageKeySaving ? 'Saving...' : 'Save Key'}
-                    </button>
-                    <button
-                      onClick={handleClearAlphaVantageKey}
-                      disabled={alphaVantageKeyClearing || !alphaVantageKeyStatus.hasKey}
-                      className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
-                    >
-                      {alphaVantageKeyClearing ? 'Clearing...' : 'Clear Key'}
-                    </button>
-                    <p className="text-xs text-gray-500">
-                      Your key is stored securely in the local database and is not displayed in full.
-                    </p>
-                  </div>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
+                  placeholder={
+                    alphaVantageKeyStatus.maskedKey || 'Enter Alpha Vantage API key'
+                  }
+                  value={alphaVantageKey}
+                  onChange={(e) => setAlphaVantageKey(e.target.value)}
+                />
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <button
+                    onClick={handleSaveAlphaVantageKey}
+                    disabled={alphaVantageKeySaving || !alphaVantageKey.trim()}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                  >
+                    {alphaVantageKeySaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleClearAlphaVantageKey}
+                    disabled={alphaVantageKeyClearing || !alphaVantageKeyStatus.hasKey}
+                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                  >
+                    {alphaVantageKeyClearing ? 'Clearing...' : 'Clear'}
+                  </button>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="bg-surface-elevated/40 rounded-2xl p-5">
+            <h2 className="text-2xl font-semibold text-white mb-2">Memory</h2>
+            {memoryLoading ? (
+              <p className="text-sm text-gray-500 italic">Loading memory...</p>
             ) : null}
-          </div>
-
-
-          <div className="text-left bg-surface-elevated/40 rounded-2xl mb-2">
+            {memoryError ? <p className="text-sm text-red-400">{memoryError}</p> : null}
+            <p className="text-xs text-gray-400 mb-6">
+              Store long-term facts, contacts, and preferences. Markdown is supported.
+            </p>
+            <textarea
+              className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm font-mono resize-y min-h-[200px]"
+              placeholder="Enter your memories as markdown..."
+              value={memoryContent}
+              onChange={(e) => setMemoryContent(e.target.value.slice(0, 5000))}
+              maxLength={5000}
+              rows={14}
+            />
+            <div className="flex items-center justify-between gap-2 mt-3">
             <button
-              type="button"
-              onClick={() => toggleSection('memories')}
-              aria-expanded={sectionOpen.memories}
-              aria-controls="settings-memories"
-              className="w-full text-left px-5 py-4 flex items-center justify-between cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-1 rounded-full bg-green-500/60" />
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Memories</h2>
-                  <p className="text-sm text-gray-400">
-                    Store long-term facts, contacts, and preferences.
-                  </p>
-                </div>
-              </div>
-              {sectionOpen.memories ? (
-                <ChevronDown className="text-gray-400" size={18} />
-              ) : (
-                <ChevronRight className="text-gray-400" size={18} />
-              )}
-            </button>
-            {sectionOpen.memories ? (
-              <div id="settings-memories" className="px-5 pb-5 space-y-4">
-                {memoriesLoading ? (
-                  <p className="text-sm text-gray-500 italic">Loading memories...</p>
-                ) : null}
-                {memoriesError ? <p className="text-sm text-red-400">{memoriesError}</p> : null}
+                type="button"
+                onClick={handleSaveMemory}
+                disabled={memorySaving}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+              >
+                {memorySaving ? 'Saving...' : 'Save'}
+              </button>
+              <span className="text-xs text-gray-500">
+                {memoryContent.length}/5000 characters
+              </span>
 
-                <div className="bg-surface rounded-xl p-4 mb-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCreateMemory}
-                        aria-label="Add memory"
-                        className="h-10 aspect-square flex items-center justify-center rounded-lg bg-green-600 hover:bg-green-700 border border-divider text-white transition-colors duration-200 cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
-                        placeholder="Category (optional)"
-                        value={newMemory.category}
-                        onChange={(e) => setNewMemory((prev) => ({ ...prev, category: e.target.value }))}
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
-                      placeholder="Memory content"
-                      value={newMemory.content}
-                      onChange={(e) => setNewMemory((prev) => ({ ...prev, content: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {memories.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No memories saved yet.</p>
-                  ) : null}
-                  {memoryCategories.map((category) => (
-                    <div key={category} className="space-y-2">
-                      <h4 className="text-xs uppercase tracking-wide text-gray-500">{category}</h4>
-                      <div className="rounded-xl py-2 bg-surface overflow-hiddenborder-divider">
-                        {groupedMemories[category].map((memory, index) => (
-                          <div
-                            key={memory.id}
-                            className="px-4 py-2 text-sm border-divider last:border-b-0"
-                          >
-                          {editingMemoryId === memory.id ? (
-                            <div className="space-y-3">
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
-                                placeholder="Category (optional)"
-                                value={editingMemory.category}
-                                onChange={(e) =>
-                                  setEditingMemory((prev) => ({ ...prev, category: e.target.value }))
-                                }
-                              />
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
-                                placeholder="Memory content"
-                                value={editingMemory.content}
-                                onChange={(e) =>
-                                  setEditingMemory((prev) => ({ ...prev, content: e.target.value }))
-                                }
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={handleUpdateMemory}
-                                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 cursor-pointer"
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={cancelEditMemory}
-                                  className="px-4 py-2 bg-surface border border-divider text-gray-300 text-sm font-medium rounded-lg transition-colors duration-200 cursor-pointer"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                              <div>
-                                <p className="text-white">{memory.content}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => startEditMemory(memory)}
-                                  aria-label="Edit memory"
-                                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-surface/70 transition-colors duration-200 cursor-pointer"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMemory(memory.id)}
-                                  aria-label="Delete memory"
-                                  className="p-1 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors duration-200 cursor-pointer"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>

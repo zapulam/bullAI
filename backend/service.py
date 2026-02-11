@@ -27,14 +27,14 @@ from openai.types.shared import Reasoning
 from typing import AsyncGenerator, Optional
 
 from prompts import *
-from models import Output
-# from tools import *
+from models import ChatContext, Output
+from tools import *
 from memory import (
     create_session_and_load_state,
     get_session_has_summary,
     update_session_summary
 )
-from repositories import MemoriesRepository, TimeSeriesRepository
+from repositories import SettingsRepository, TimeSeriesRepository
 from streaming import stream_result_events
 
 
@@ -55,14 +55,9 @@ class ChatService:
         """
         self.base_tools = [
             WebSearchTool(),
-            HostedMCPTool(
-                tool_config={
-                    "type": "mcp",
-                    "server_label": "alpha_vantage",
-                    "server_url": f"https://mcp.alphavantage.co/mcp?apikey={self.alpha_vantage_key}",
-                    "require_approval": "never",
-                }
-            )
+            time_series_daily,
+            time_series_weekly,
+            time_series_monthly
         ]
 
 
@@ -123,23 +118,11 @@ class ChatService:
         """
         provider = OpenAIProvider(openai_client=self.openai_client)
 
-        memories_repo = MemoriesRepository()
-        time_series_repo = TimeSeriesRepository()
-        memories = memories_repo.list_memories()
-        memories_by_category = {}
-        for memory in memories:
-            category = memory.get("category") or "General"
-            memories_by_category.setdefault(category, []).append(memory.get("content") or "")
-        memory_lines = []
-        for category, items in sorted(memories_by_category.items()):
-            cleaned_items = [item for item in items if str(item).strip()]
-            if not cleaned_items:
-                continue
-            memory_lines.append(f"## {category}")
-            memory_lines.extend(f"- {item}" for item in cleaned_items)
+        settings_repo = SettingsRepository()
+        memory_content = settings_repo.get_user_memory()
         memories_block = ""
-        if memory_lines:
-            memories_block = "\n\n## User Memories\n" + "\n".join(memory_lines)
+        if memory_content and memory_content.strip():
+            memories_block = "\n\n## User Memories\n" + memory_content.strip()
 
         triage = Agent(
             name="Triage agent",
@@ -168,6 +151,9 @@ class ChatService:
                 input=user_input,
                 session=session,
                 max_turns=20,
+                context=ChatContext(
+                    alpha_vantage_key=self.alpha_vantage_key
+                ),
                 run_config=RunConfig(
                     model_provider=provider,
                     tracing_disabled=True
@@ -177,16 +163,6 @@ class ChatService:
             # Stream the response content using stream_events()
             accumulated_text = ""
             async for chunk in stream_result_events(result):
-                if chunk["type"] == "visual_data":
-                    normalized = time_series_repo.normalize_alpha_vantage_time_series(chunk.get("content"))
-                    if normalized:
-                        chunk = {
-                            **chunk,
-                            "content": {
-                                "raw": chunk.get("content"),
-                                "timeSeries": normalized,
-                            },
-                        }
                 if chunk["type"] == "chunk":
                     accumulated_text += chunk["content"]
                 yield chunk

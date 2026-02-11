@@ -10,7 +10,7 @@ from typing import Optional, Any, Literal, List
 
 # Chat Context
 class ChatContext(BaseModel):
-    api_key: str
+    alpha_vantage_key: str
 
 
 # Structured output for bullAI triage agent
@@ -42,23 +42,13 @@ class TurnRequest(BaseModel):
     user_input: str
 
 
-# Memories 
-class MemoryCreateRequest(BaseModel):
-    category: Optional[str] = None
+# Memories
+class MemoryGetResponse(BaseModel):
     content: str
 
 
-class MemoryUpdateRequest(BaseModel):
-    category: Optional[str] = None
-    content: str
-
-
-class MemoryResponse(BaseModel):
-    id: int
-    category: Optional[str] = None
-    content: str
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+class MemoryPutRequest(BaseModel):
+    content: str = Field(max_length=5000)
 
 
 # Settings 
