@@ -243,14 +243,14 @@ export default function Settings() {
                   <button
                     onClick={handleSaveOpenAIKey}
                     disabled={openaiKeySaving || !openaiKey.trim()}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
                   >
                     {openaiKeySaving ? 'Saving...' : 'Save'}
                   </button>
                   <button
                     onClick={handleClearOpenAIKey}
                     disabled={openaiKeyClearing || !openaiKeyStatus.hasKey}
-                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
                   >
                     {openaiKeyClearing ? 'Clearing...' : 'Clear'}
                   </button>
@@ -277,14 +277,14 @@ export default function Settings() {
                   <button
                     onClick={handleSaveAlphaVantageKey}
                     disabled={alphaVantageKeySaving || !alphaVantageKey.trim()}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
                   >
                     {alphaVantageKeySaving ? 'Saving...' : 'Save'}
                   </button>
                   <button
                     onClick={handleClearAlphaVantageKey}
                     disabled={alphaVantageKeyClearing || !alphaVantageKeyStatus.hasKey}
-                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                    className="px-4 py-2 bg-surface border border-divider text-gray-200 text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
                   >
                     {alphaVantageKeyClearing ? 'Clearing...' : 'Clear'}
                   </button>
@@ -315,7 +315,7 @@ export default function Settings() {
                 type="button"
                 onClick={handleSaveMemory}
                 disabled={memorySaving}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50"
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 disabled:opacity-50 cursor-pointer"
               >
                 {memorySaving ? 'Saving...' : 'Save'}
               </button>

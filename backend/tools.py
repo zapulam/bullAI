@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from models import ChatContext
 from settings import settings
+from visualization import build_visualization
 
 
 async def get_screen_data(
@@ -96,6 +97,11 @@ async def time_series_daily(
         "time_periods": time_periods or [],
     }
 
+    if visual:
+        viz_obj = build_visualization(result)
+        if viz_obj is not None:
+            result["visualization"] = viz_obj
+
     return result
 
 
@@ -141,6 +147,11 @@ async def time_series_weekly(
         "time_periods": time_periods or [],
     }
 
+    if visual:
+        viz_obj = build_visualization(result)
+        if viz_obj is not None:
+            result["visualization"] = viz_obj
+
     return result
 
 
@@ -185,5 +196,10 @@ async def time_series_monthly(
         "screens": screens or [],
         "time_periods": time_periods or [],
     }
+
+    if visual:
+        viz_obj = build_visualization(result)
+        if viz_obj is not None:
+            result["visualization"] = viz_obj
 
     return result

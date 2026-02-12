@@ -226,6 +226,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
   };
 
   const visualization = React.useMemo(() => {
+    if (message.visualization) return message.visualization;
     for (let i = statusEvents.length - 1; i >= 0; i -= 1) {
       const event = statusEvents[i];
       if (event?.type !== 'tool_output') continue;
@@ -233,7 +234,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
       if (viz) return viz;
     }
     return null;
-  }, [statusEvents]);
+  }, [message.visualization, statusEvents]);
 
   // Format JSON content for display
   const formatContent = (content, eventType) => {
@@ -342,6 +343,27 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                     />
                   </div>
                 )}
+                {thought && (
+                  <div className="mt-2 text-xs text-gray-400 whitespace-normal break-words text-left">
+                    <button
+                      type="button"
+                      onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
+                      className="flex items-center gap-1 mb-1 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer disabled:cursor-default"
+                      disabled={!hasResponse}
+                    >
+                      <svg
+                        className={`w-3 h-3 transition-transform ${!hasResponse || isThoughtExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span className="font-semibold">Thought</span>
+                    </button>
+                    {(!hasResponse || isThoughtExpanded) && <p>{thought}</p>}
+                  </div>
+                )}
                 <div className="flex items-center space-x-2 mt-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -375,6 +397,27 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                       visualization={visualization}
                       onSave={onSaveChart}
                     />
+                  </div>
+                )}
+                {thought && (
+                  <div className="mt-2 text-xs text-gray-400 whitespace-normal break-words text-left">
+                    <button
+                      type="button"
+                      onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
+                      className="flex items-center gap-1 mb-1 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer disabled:cursor-default"
+                      disabled={!hasResponse}
+                    >
+                      <svg
+                        className={`w-3 h-3 transition-transform ${!hasResponse || isThoughtExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span className="font-semibold">Thought</span>
+                    </button>
+                    {(!hasResponse || isThoughtExpanded) && <p>{thought}</p>}
                   </div>
                 )}
                 <div className="text-sm leading-normal w-[100%] text-left [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
@@ -437,27 +480,6 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                     {message.content}
                   </ReactMarkdown>
                 </div>
-                {thought && (
-                  <div className="mt-2 text-xs text-gray-400 whitespace-normal break-words text-left">
-                    <button
-                      type="button"
-                      onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
-                      className="flex items-center gap-1 mb-1 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer disabled:cursor-default"
-                      disabled={!hasResponse}
-                    >
-                      <svg
-                        className={`w-3 h-3 transition-transform ${!hasResponse || isThoughtExpanded ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                      <span className="font-semibold">Thought</span>
-                    </button>
-                    {(!hasResponse || isThoughtExpanded) && <p>{thought}</p>}
-                  </div>
-                )}
                 {latestToolCall && isLoading && (() => {
                   const details = getToolCallDetails(latestToolCall);
                   return (

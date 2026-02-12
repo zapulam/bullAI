@@ -40,6 +40,10 @@ export const useChat = (initialSessionId = null) => {
           // Convert backend messages to frontend format
           // Filter out messages without content (these are tool calls, not actual messages)
           const messagesWithContent = data.messages.filter((msg) => {
+            // Allow assistant messages with visualization even if content is empty
+            if (msg.role === 'assistant' && msg.visualization) {
+              return true;
+            }
             // Exclude messages that don't have a content field or have empty/null/undefined content
             // Tool calls don't have content, so they should be filtered out
             if (!msg.hasOwnProperty('content')) {
@@ -163,6 +167,8 @@ export const useChat = (initialSessionId = null) => {
                 content: content,
                 // Ensure historical assistant messages match the live chat shape
                 ...(msg.role === 'assistant' && thought ? { thought } : {}),
+                // Pass through visualization from backend for history messages
+                ...(msg.visualization ? { visualization: msg.visualization } : {}),
                 // Mark history messages so the UI can show date+time formatting
                 isHistory: true,
                 timestamp: timestamp,
@@ -170,9 +176,10 @@ export const useChat = (initialSessionId = null) => {
               };
             })
             .filter((msg) => {
-              // Final filter: exclude messages with empty content after processing
-              // This catches cases where content becomes empty during processing
-              return msg.content && typeof msg.content === 'string' && msg.content.trim().length > 0;
+              // Final filter: keep messages with content, or assistant messages with visualization
+              const hasContent = msg.content && typeof msg.content === 'string' && msg.content.trim().length > 0;
+              const hasViz = msg.role === 'assistant' && msg.visualization;
+              return hasContent || hasViz;
             });
           setMessages(formattedMessages);
         })

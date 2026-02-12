@@ -4,6 +4,7 @@ bullAI Internal Chat - FastAPI application.
 Written by: zapulam
 """
 
+import ast
 import os
 import json
 import uuid
@@ -37,7 +38,6 @@ from memory import (
 )
 from repositories import ChartRepository, SettingsRepository
 from settings import settings
-from visualization import build_visualization
 from streaming import (
     ChatChunkEvent,
     ChatToolInput,
@@ -174,7 +174,7 @@ async def create_chat(
                     parser.reset()
                     event = ChatToolInput(
                         type="tool_call",
-                        tool_name=chunk.get("name", ""),
+                        tool_name=chunk.get("name", chunk.get("content", "")),
                         content=chunk.get("arguments", {}),
                     )
                     yield f"data: {event.model_dump_json()}\n\n"
@@ -188,13 +188,10 @@ async def create_chat(
                 elif chunk.get("type") == "tool_output":
                     tool_output_content = chunk.get("content", "")
                     content = tool_output_content
+                    tool_name = last_tool_name or ""
                     if isinstance(tool_output_content, dict):
-                        tool_name = tool_output_content.get("name", last_tool_name)
+                        tool_name = tool_output_content.get("name", last_tool_name) or tool_name
                         content = tool_output_content.get("content", tool_output_content)
-                        viz = build_visualization(tool_output_content)
-                        if viz is not None:
-                            content = dict(content) if isinstance(content, dict) else content
-                            content["visualization"] = viz
 
                     event = ChatToolOutput(
                         type="tool_output",
@@ -251,8 +248,8 @@ async def create_chat(
 
 @app.get("/chat/sessions")
 async def get_sessions(
-    rt: AppRuntime = Depends(get_runtime),
-) -> Dict[str, Any]:
+        rt: AppRuntime = Depends(get_runtime),
+    ) -> Dict[str, Any]:
     """
     Get all chat sessions for a specific user.
 
@@ -268,9 +265,9 @@ async def get_sessions(
 
 @app.delete("/chat/sessions/{conversation_id}")
 async def delete_session(
-    conversation_id: str,
-    rt: AppRuntime = Depends(get_runtime),
-) -> Response:
+        conversation_id: str,
+        rt: AppRuntime = Depends(get_runtime),
+    ) -> Response:
     """
     Delete a chat session and all its messages.
 
@@ -359,8 +356,10 @@ async def get_chat_history(
         # Return empty messages instead of failing
         return {"messages": []}
     
-    # Convert items to message format
+    # Convert items to message format. Process in sequence; tool outputs
+    # with visualization are attached to the next assistant message.
     messages = []
+    pending_visualization = None
     for item in items:
         created_at = None
         if isinstance(item, dict) and "data" in item:
@@ -376,7 +375,32 @@ async def get_chat_history(
             role = getattr(raw, "role", "user")
             content = getattr(raw, "content", "")
             created_at = created_at or getattr(raw, "created_at", None)
-        
+
+        # Tool output items: extract visualization for next assistant message.
+        # Agents SDK stores with type="function_call_output" and output (string).
+        if raw.get("type") == "function_call_output":
+            output_raw = raw.get("output", raw.get("content", ""))
+            parsed = None
+            if isinstance(output_raw, dict) and "visualization" in output_raw:
+                parsed = output_raw
+            elif isinstance(output_raw, str) and output_raw.strip():
+                try:
+                    parsed = json.loads(output_raw)
+                except json.JSONDecodeError:
+                    try:
+                        parsed = ast.literal_eval(output_raw)
+                    except (ValueError, SyntaxError):
+                        parsed = None
+            if isinstance(parsed, dict) and "visualization" in parsed:
+                pending_visualization = parsed.get("visualization")
+            continue
+        if role == "tool":
+            if isinstance(content, dict) and "visualization" in content:
+                pending_visualization = content.get("visualization")
+            continue
+        if raw.get("type") in ("reasoning", "function_call"):
+            continue
+
         thought = None
         status = None
 
@@ -462,6 +486,9 @@ async def get_chat_history(
                 message_data["thought"] = thought
             if status is not None:
                 message_data["status"] = status
+            if pending_visualization is not None:
+                message_data["visualization"] = pending_visualization
+                pending_visualization = None
 
         messages.append(message_data)
     
