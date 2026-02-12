@@ -4,7 +4,6 @@ bullAI Internal Chat - FastAPI application.
 Written by: zapulam
 """
 
-import ast
 import os
 import json
 import uuid
@@ -350,53 +349,37 @@ async def get_chat_history(
     Returns:
         Dictionary containing list of messages.
     """
-    try:
-        items = await get_conversation_messages(conversation_id)
-    except Exception as e:
-        # Return empty messages instead of failing
-        return {"messages": []}
-    
-    # Convert items to message format. Process in sequence; tool outputs
-    # with visualization are attached to the next assistant message.
+    items = await get_conversation_messages(conversation_id)
     messages = []
     pending_visualization = None
+
     for item in items:
-        created_at = None
-        if isinstance(item, dict) and "data" in item:
-            raw = item.get("data") or {}
-            created_at = item.get("created_at")
-        else:
-            raw = item
+        raw = item.get("data") or {}
+        created_at = item.get("created_at")
+        role = raw.get("role", "user")
+        content = raw.get("content", "")
 
-        if isinstance(raw, dict):
-            role = raw.get("role", "user")
-            content = raw.get("content", "")
-        else:
-            role = getattr(raw, "role", "user")
-            content = getattr(raw, "content", "")
-            created_at = created_at or getattr(raw, "created_at", None)
-
-        # Tool output items: extract visualization for next assistant message.
-        # Agents SDK stores with type="function_call_output" and output (string).
         if raw.get("type") == "function_call_output":
             output_raw = raw.get("output", raw.get("content", ""))
-            parsed = None
-            if isinstance(output_raw, dict) and "visualization" in output_raw:
-                parsed = output_raw
+            if isinstance(output_raw, dict):
+                viz = output_raw.get("visualization")
+                if viz:
+                    pending_visualization = viz
             elif isinstance(output_raw, str) and output_raw.strip():
                 try:
                     parsed = json.loads(output_raw)
+                    if isinstance(parsed, dict):
+                        viz = parsed.get("visualization")
+                        if viz:
+                            pending_visualization = viz
                 except json.JSONDecodeError:
-                    try:
-                        parsed = ast.literal_eval(output_raw)
-                    except (ValueError, SyntaxError):
-                        parsed = None
-            if isinstance(parsed, dict) and "visualization" in parsed:
-                pending_visualization = parsed.get("visualization")
+                    pass
             continue
+
         if role == "tool":
-            if isinstance(content, dict) and "visualization" in content:
-                pending_visualization = content.get("visualization")
+            viz = content.get("visualization") if isinstance(content, dict) else None
+            if viz:
+                pending_visualization = viz
             continue
         if raw.get("type") in ("reasoning", "function_call"):
             continue
@@ -404,69 +387,55 @@ async def get_chat_history(
         thought = None
         status = None
 
-        # Handle assistant messages where content might be a structured Output,
-        # or legacy text/list/dict structures.
         if role == "assistant":
-            # First, try to interpret content as structured Output with thought/response/status
-            structured = None
-
-            if isinstance(content, dict) and (
-                "thought" in content or "response" in content or "status" in content
-            ):
-                structured = content
-            elif isinstance(content, str):
-                # Try to parse JSON string into structured dict
+            structured = (
+                content
+                if isinstance(content, dict)
+                and ("thought" in content or "response" in content or "status" in content)
+                else None
+            )
+            if structured is None and isinstance(content, str):
                 try:
                     parsed = json.loads(content)
                     if isinstance(parsed, dict) and (
                         "thought" in parsed or "response" in parsed or "status" in parsed
                     ):
                         structured = parsed
-                except Exception:
-                    structured = None
+                except json.JSONDecodeError:
+                    pass
 
-            if structured is not None:
-                # Extract structured fields
+            if structured:
                 thought_val = structured.get("thought")
                 response_val = structured.get("response")
                 status_val = structured.get("status")
-
                 thought = (
                     thought_val
                     if isinstance(thought_val, str)
                     else (json.dumps(thought_val) if thought_val is not None else None)
                 )
-                # Response/content shown to user
-                if isinstance(response_val, str):
-                    content = response_val
-                elif response_val is not None:
-                    content = json.dumps(response_val)
-                else:
-                    # Fallback to empty string if response is missing
-                    content = ""
-
-                if isinstance(status_val, str):
-                    status = status_val
-                elif status_val is not None:
-                    status = str(status_val)
+                content = (
+                    response_val
+                    if isinstance(response_val, str)
+                    else (json.dumps(response_val) if response_val is not None else "")
+                )
+                status = (
+                    status_val
+                    if isinstance(status_val, str)
+                    else (str(status_val) if status_val is not None else None)
+                )
             else:
-                # Legacy handling: content as list/dict with 'text' field or other types
-                if isinstance(content, list) and len(content) > 0:
-                    # Handle list of dicts like [{"text": "...", ...}]
-                    first_item = content[0]
-                    if isinstance(first_item, dict):
-                        content = first_item.get("text", "")
-                    else:
-                        content = str(first_item)
+                if isinstance(content, list) and content:
+                    content = (
+                        content[0].get("text", "")
+                        if isinstance(content[0], dict)
+                        else str(content[0])
+                    )
                 elif isinstance(content, dict):
-                    # Extract text from dict structure like {'text': '...', 'annotations': ..., 'type': ..., 'logprobs': ...}
                     content = content.get("text", "")
-                elif not isinstance(content, str):
-                    # Fallback: convert to string if it's not already a string
-                    content = str(content)
-        elif not isinstance(content, str):
-            # For non-assistant messages, convert to string if needed
-            content = str(content)
+                else:
+                    content = content if isinstance(content, str) else str(content or "")
+        else:
+            content = content if isinstance(content, str) else str(content or "")
         
         message_data: Dict[str, Any] = {
             "role": role,
@@ -482,9 +451,9 @@ async def get_chat_history(
         # Only attach thought/status for assistant messages when present so
         # the frontend can render them like live streamed chats.
         if role == "assistant":
-            if thought is not None and str(thought).strip():
+            if thought and str(thought).strip():
                 message_data["thought"] = thought
-            if status is not None:
+            if status:
                 message_data["status"] = status
             if pending_visualization is not None:
                 message_data["visualization"] = pending_visualization
