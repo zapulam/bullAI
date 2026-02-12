@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   CHAT_CLEAR: 'chat/clear',
   CHAT_SESSIONS: 'chat/sessions',
   CHAT_SESSION_DELETE: 'chat/sessions',
+  CHARTS: 'charts',
   SETTINGS_MEMORIES: 'settings/memories',
   SETTINGS_OPENAI_API_KEY: 'settings/openai-api-key',
   SETTINGS_ALPHA_VANTAGE_API_KEY: 'settings/alpha-vantage-api-key',

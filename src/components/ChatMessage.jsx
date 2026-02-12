@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import TimeSeriesChart from './TimeSeriesChart';
+import VizChart from './VizChart';
 
 // Format UTC timestamps from the backend into the user's local time.
 // When isHistory is true, show date + time (MM/DD/YY, HH:MM); otherwise time only.
@@ -69,7 +69,7 @@ export function UserMessage({ message }) {
 
   return (
     <div className="flex justify-end mb-4 animate-fade-in chat-font">
-      <div className="flex items-start space-x-3 max-w-[80%]">
+      <div className="flex items-start space-x-3">
         <div className="flex-1">
           <div className="bg-green-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-md">
             <p className="text-sm leading-normal whitespace-normal break-words">{message.content}</p>
@@ -85,7 +85,7 @@ export function UserMessage({ message }) {
   );
 }
 
-export function AssistantMessage({ message, isLoading = false }) {
+export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
   const statusEvents = message.statusEvents || [];
   const [isStatusExpanded, setIsStatusExpanded] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState(new Set());
@@ -220,28 +220,17 @@ export function AssistantMessage({ message, isLoading = false }) {
     }
   };
 
-  const extractTimeSeries = (content) => {
-    if (!content) return null;
-    if (typeof content === 'object' && content !== null) {
-      return content.timeSeries || content.time_series || null;
-    }
-    const parsed = parseJsonIfString(content);
-    if (parsed && typeof parsed === 'object') {
-      return parsed.timeSeries || parsed.time_series || null;
-    }
-    return null;
+  const extractVisualization = (content) => {
+    if (!content || typeof content !== 'object') return null;
+    return content.visualization || null;
   };
 
-  const timeSeries = React.useMemo(() => {
+  const visualization = React.useMemo(() => {
     for (let i = statusEvents.length - 1; i >= 0; i -= 1) {
       const event = statusEvents[i];
-      if (event?.type !== 'tool_output') {
-        continue;
-      }
-      const series = extractTimeSeries(event.content);
-      if (series) {
-        return series;
-      }
+      if (event?.type !== 'tool_output') continue;
+      const viz = extractVisualization(event.content);
+      if (viz) return viz;
     }
     return null;
   }, [statusEvents]);
@@ -339,12 +328,20 @@ export function AssistantMessage({ message, isLoading = false }) {
 
   return (
     <div className="flex justify-start mb-4 animate-fade-in chat-font">
-      <div className="flex items-start space-x-3 max-w-[80%]">
+      <div className="flex items-start space-x-3 w-[70%]">
         <img src="/bull.png" alt="bullAI" className="flex-shrink-0 w-8 h-8 rounded-full object-contain p-1" />
         <div className="flex-1 flex flex-col">
           <div className="text-gray-100">
             {isLoading && !message.content ? (
               <div className="space-y-2">
+                {visualization && (
+                  <div className="mb-4">
+                    <VizChart
+                      visualization={visualization}
+                      onSave={onSaveChart}
+                    />
+                  </div>
+                )}
                 <div className="flex items-center space-x-2 mt-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -372,46 +369,15 @@ export function AssistantMessage({ message, isLoading = false }) {
               </div>
             ) : (
               <>
-                {/* Streamed model reasoning (thought), left-aligned and collapsible once response appears */}
-                {thought && (
-                  <div className="mb-2 text-xs text-gray-400 whitespace-normal break-words text-left">
-                    <button
-                      type="button"
-                      onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
-                      className="flex items-center gap-1 mb-1 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer disabled:cursor-default"
-                      disabled={!hasResponse}
-                    >
-                      <svg
-                        className={`w-3 h-3 transition-transform ${!hasResponse || isThoughtExpanded ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                      <span className="font-semibold">Thought</span>
-                    </button>
-                    {(!hasResponse || isThoughtExpanded) && <p>{thought}</p>}
+                {visualization && (
+                  <div className="mb-4">
+                    <VizChart
+                      visualization={visualization}
+                      onSave={onSaveChart}
+                    />
                   </div>
                 )}
-
-                {latestToolCall && isLoading && (() => {
-                  const details = getToolCallDetails(latestToolCall);
-                  return (
-                    <div className="mb-3">
-                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
-                        {getStatusIcon('tool_call')}
-                        <div className="flex flex-col text-left min-w-0">
-                          <span className="text-gray-200">Tool: {details.toolName}</span>
-                          {details.argsPretty && (
-                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <div className="text-sm leading-normal break-words prose prose-invert prose-sm w-full text-left [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <div className="text-sm leading-normal w-[100%] text-left [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
@@ -471,11 +437,43 @@ export function AssistantMessage({ message, isLoading = false }) {
                     {message.content}
                   </ReactMarkdown>
                 </div>
-                {timeSeries && (
-                  <div className="mt-4">
-                    <TimeSeriesChart series={timeSeries} />
+                {thought && (
+                  <div className="mt-2 text-xs text-gray-400 whitespace-normal break-words text-left">
+                    <button
+                      type="button"
+                      onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
+                      className="flex items-center gap-1 mb-1 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer disabled:cursor-default"
+                      disabled={!hasResponse}
+                    >
+                      <svg
+                        className={`w-3 h-3 transition-transform ${!hasResponse || isThoughtExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span className="font-semibold">Thought</span>
+                    </button>
+                    {(!hasResponse || isThoughtExpanded) && <p>{thought}</p>}
                   </div>
                 )}
+                {latestToolCall && isLoading && (() => {
+                  const details = getToolCallDetails(latestToolCall);
+                  return (
+                    <div className="mt-3">
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
+                        {getStatusIcon('tool_call')}
+                        <div className="flex flex-col text-left min-w-0">
+                          <span className="text-gray-200">Tool: {details.toolName}</span>
+                          {details.argsPretty && (
+                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>

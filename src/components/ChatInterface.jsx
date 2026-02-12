@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserMessage, AssistantMessage, SystemMessage, ErrorMessage } from './ChatMessage';
 import { useChat } from '../hooks/useChat';
+import { useCharts } from '../hooks/useCharts';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
 import { HelpCircle, X } from 'lucide-react';
 
@@ -11,6 +12,27 @@ const BULL_IMAGES = [
 
 const TOOL_COMMANDS_ALWAYS_AVAILABLE = [
   { command: 'search_help_docs', description: 'Search bullAI help documentation', key: 'bullAiHelp' },
+  { command: 'time_series_daily', description: 'Get daily stock price time series', key: 'tsDaily' },
+  { command: 'time_series_weekly', description: 'Get weekly stock price time series', key: 'tsWeekly' },
+  { command: 'time_series_monthly', description: 'Get monthly stock price time series', key: 'tsMonthly' },
+  {
+    command: 'sma',
+    description: 'Add Simple Moving Average to chart',
+    key: 'sma',
+    contextPrefix: "Use time_series_daily, time_series_weekly, or time_series_monthly with screens: ['sma'] and specify time_periods. ",
+  },
+  {
+    command: 'ema',
+    description: 'Add Exponential Moving Average to chart',
+    key: 'ema',
+    contextPrefix: "Use time_series_daily, time_series_weekly, or time_series_monthly with screens: ['ema'] and specify time_periods. ",
+  },
+  {
+    command: 'wma',
+    description: 'Add Weighted Moving Average to chart',
+    key: 'wma',
+    contextPrefix: "Use time_series_daily, time_series_weekly, or time_series_monthly with screens: ['wma'] and specify time_periods. ",
+  },
 ];
 
 const WELCOME_HEADLINE = 'Welcome to bullAI';
@@ -21,7 +43,6 @@ export default function ChatInterface({
   isSideNavOpen,
   onToggleSideNav,
   onSessionUpdate,
-  onTimeSeriesUpdate,
 }) {
   const [inputValue, setInputValue] = useState('');
   const [bullImage, setbullImage] = useState(BULL_IMAGES[0]);
@@ -38,8 +59,15 @@ export default function ChatInterface({
   const commandsPopupRef = useRef(null);
   const prevIsLoadingRef = useRef(false);
   const hasTriggeredRefetchRef = useRef(false);
-  const lastTimeSeriesRef = useRef(null);
   const { messages, isLoading, sendMessage, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
+  const { saveChart } = useCharts();
+
+  const handleSaveChart = React.useCallback(
+    (payload) => {
+      saveChart(payload.title, payload.visualization_data, payload.call_data);
+    },
+    [saveChart]
+  );
 
   // Reset refetch trigger when session changes
   useEffect(() => {
@@ -86,55 +114,6 @@ export default function ChatInterface({
 
     loadApiKeyStatus();
   }, []);
-
-  const extractTimeSeries = (content) => {
-    if (!content) return null;
-    if (typeof content === 'object') {
-      return content.timeSeries || content.time_series || null;
-    }
-    if (typeof content === 'string') {
-      try {
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === 'object') {
-          return parsed.timeSeries || parsed.time_series || null;
-        }
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  };
-
-  useEffect(() => {
-    if (!onTimeSeriesUpdate) return;
-
-    let latestSeries = null;
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
-      if (!message?.statusEvents) {
-        continue;
-      }
-      for (let j = message.statusEvents.length - 1; j >= 0; j -= 1) {
-        const event = message.statusEvents[j];
-        if (event?.type !== 'tool_output') {
-          continue;
-        }
-        const series = extractTimeSeries(event.content);
-        if (series) {
-          latestSeries = series;
-          break;
-        }
-      }
-      if (latestSeries) {
-        break;
-      }
-    }
-
-    if (latestSeries && latestSeries !== lastTimeSeriesRef.current) {
-      lastTimeSeriesRef.current = latestSeries;
-      onTimeSeriesUpdate(latestSeries);
-    }
-  }, [messages, onTimeSeriesUpdate]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -222,7 +201,7 @@ export default function ChatInterface({
     return TOOL_COMMANDS_ALWAYS_AVAILABLE.map((tool) => ({
       command: tool.command,
       description: tool.description,
-      contextPrefix: `Use tool ${tool.command} with the following input: `,
+      contextPrefix: tool.contextPrefix ?? `Use the ${tool.command} tool to grab data for: `,
     }));
   }, []);
 
@@ -432,7 +411,7 @@ export default function ChatInterface({
                       <li>Search financial literature to answer your questions</li>
                       <li>Look up historical financial data</li>
                       <li>Display detailed charts and visualizations</li>
-                      <li>Use natural language or type <span className="font-mono text-gray-200">/</span> for focused commands (e.g. search help docs)</li>
+                      <li>Use natural language or type <span className="font-mono text-gray-200">/</span> for focused commands (e.g. time series, indicators)</li>
                     </ul>
                   </section>
 
@@ -441,9 +420,18 @@ export default function ChatInterface({
                     <p className="text-sm text-gray-300 mb-2">
                       Type in the input box to ask questions. Type <span className="font-mono text-gray-200">/</span> to open the commands list and pick a focused action.
                     </p>
-                    <p className="text-sm text-gray-400">
-                      Available slash commands include: <span className="font-mono text-gray-200">search_help_docs</span> to search bullAI help documentation.
+                    <p className="text-sm text-gray-400 mb-2">
+                      Available slash commands:
                     </p>
+                    <ul className="text-sm text-gray-400 space-y-1 list-disc list-inside">
+                      <li><span className="font-mono text-gray-200">search_help_docs</span> – search bullAI help documentation</li>
+                      <li><span className="font-mono text-gray-200">time_series_daily</span> – get daily stock price time series</li>
+                      <li><span className="font-mono text-gray-200">time_series_weekly</span> – get weekly stock price time series</li>
+                      <li><span className="font-mono text-gray-200">time_series_monthly</span> – get monthly stock price time series</li>
+                      <li><span className="font-mono text-gray-200">sma</span> – add Simple Moving Average to a chart</li>
+                      <li><span className="font-mono text-gray-200">ema</span> – add Exponential Moving Average to a chart</li>
+                      <li><span className="font-mono text-gray-200">wma</span> – add Weighted Moving Average to a chart</li>
+                    </ul>
                   </section>
 
                   <section>
@@ -542,7 +530,14 @@ export default function ChatInterface({
                 // Show loading indicator only if this is the last message and it's empty and we're loading
                 const isLastMessage = messages[messages.length - 1].id === message.id;
                 const showLoading = isLoading && isLastMessage && !message.content;
-                return <AssistantMessage key={message.id} message={message} isLoading={showLoading} />;
+                return (
+                  <AssistantMessage
+                    key={message.id}
+                    message={message}
+                    isLoading={showLoading}
+                    onSaveChart={handleSaveChart}
+                  />
+                );
               } else if (message.role === 'system') {
                 return <SystemMessage key={message.id} message={message} />;
               } else if (message.role === 'error') {

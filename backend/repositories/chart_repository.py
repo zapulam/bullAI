@@ -1,0 +1,133 @@
+"""
+bullAI Internal Chat - chart repository.
+
+CRUD for saved charts.
+"""
+
+import json
+import uuid
+
+from typing import Any, Dict, List, Optional
+
+from .db import get_connection
+
+
+class ChartRepository:
+    """Repository for saved chart persistence."""
+
+    def save_chart(
+        self,
+        title: str,
+        visualization_data: dict,
+        call_data: dict,
+    ) -> dict:
+        """
+        Save a chart to the database.
+
+        Args:
+            title: Chart display title.
+            visualization_data: JSON-serializable dict (chartData, screens, meta).
+            call_data: JSON-serializable dict (func, ticker, screens, time_periods).
+
+        Returns:
+            Saved chart dict with id, title, visualization_data, call_data, created_at.
+        """
+        chart_id = str(uuid.uuid4())
+        viz_json = json.dumps(visualization_data)
+        call_json = json.dumps(call_data)
+
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO charts (id, title, visualization_data, call_data)
+                VALUES (?, ?, ?, ?)
+                """,
+                (chart_id, title, viz_json, call_json),
+            )
+            conn.commit()
+
+        return {
+            "id": chart_id,
+            "title": title,
+            "visualization_data": visualization_data,
+            "call_data": call_data,
+            "created_at": None,
+        }
+
+    def list_charts(self) -> List[Dict[str, Any]]:
+        """
+        List all saved charts, newest first.
+
+        Returns:
+            List of chart dicts with id, title, visualization_data, call_data, created_at.
+        """
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT id, title, visualization_data, call_data, created_at
+                FROM charts
+                ORDER BY created_at DESC
+                """
+            )
+            rows = cursor.fetchall()
+        charts = []
+        for row in rows:
+            try:
+                viz = json.loads(row[2]) if row[2] else {}
+                call = json.loads(row[3]) if row[3] else {}
+            except json.JSONDecodeError:
+                viz = {}
+                call = {}
+            charts.append({
+                "id": row[0],
+                "title": row[1],
+                "visualization_data": viz,
+                "call_data": call,
+                "created_at": row[4],
+            })
+        return charts
+
+    def get_chart(self, chart_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a chart by id.
+
+        Returns:
+            Chart dict or None if not found.
+        """
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT id, title, visualization_data, call_data, created_at
+                FROM charts
+                WHERE id = ?
+                """,
+                (chart_id,),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            viz = json.loads(row[2]) if row[2] else {}
+            call = json.loads(row[3]) if row[3] else {}
+        except json.JSONDecodeError:
+            viz = {}
+            call = {}
+        return {
+            "id": row[0],
+            "title": row[1],
+            "visualization_data": viz,
+            "call_data": call,
+            "created_at": row[4],
+        }
+
+    def delete_chart(self, chart_id: str) -> bool:
+        """
+        Delete a chart by id.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        with get_connection() as conn:
+            cursor = conn.execute("DELETE FROM charts WHERE id = ?", (chart_id,))
+            conn.commit()
+            return cursor.rowcount > 0

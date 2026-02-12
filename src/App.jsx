@@ -9,7 +9,6 @@ export default function App() {
   const [chatKey, setChatKey] = useState(0);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [activeView, setActiveView] = useState('chat');
-  const [latestTimeSeries, setLatestTimeSeries] = useState(null);
   const refetchSessionsRef = useRef(null);
 
   const handleNewChat = () => {
@@ -51,7 +50,7 @@ export default function App() {
           {activeView === 'settings' ? (
             <Settings onClose={() => setActiveView('chat')} />
           ) : activeView === 'charts' ? (
-            <TimeSeriesDashboard series={latestTimeSeries} />
+            <TimeSeriesDashboard />
           ) : (
             <ChatInterface 
               key={chatKey}
@@ -63,7 +62,6 @@ export default function App() {
                   refetchSessionsRef.current();
                 }
               }}
-              onTimeSeriesUpdate={setLatestTimeSeries}
             />
           )}
         </div>

@@ -92,3 +92,10 @@ class TimeSeriesPoint(BaseModel):
 class TimeSeriesResponse(BaseModel):
     meta: TimeSeriesMeta
     points: List[TimeSeriesPoint]
+
+
+# Charts
+class ChartSaveRequest(BaseModel):
+    title: str = Field(min_length=1)
+    visualization_data: dict
+    call_data: dict

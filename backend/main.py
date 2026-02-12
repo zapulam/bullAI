@@ -27,6 +27,7 @@ from models import (
     OpenAIKeyResponse,
     AlphaVantageKeyRequest,
     AlphaVantageKeyResponse,
+    ChartSaveRequest,
 )
 from memory import (
     get_conversations,
@@ -34,8 +35,9 @@ from memory import (
     delete_conversation,
     initialize_sqlite_db,
 )
-from repositories import SettingsRepository
+from repositories import ChartRepository, SettingsRepository
 from settings import settings
+from visualization import build_visualization
 from streaming import (
     ChatChunkEvent,
     ChatToolInput,
@@ -189,6 +191,10 @@ async def create_chat(
                     if isinstance(tool_output_content, dict):
                         tool_name = tool_output_content.get("name", last_tool_name)
                         content = tool_output_content.get("content", tool_output_content)
+                        viz = build_visualization(tool_output_content)
+                        if viz is not None:
+                            content = dict(content) if isinstance(content, dict) else content
+                            content["visualization"] = viz
 
                     event = ChatToolOutput(
                         type="tool_output",
@@ -276,6 +282,59 @@ async def delete_session(
         204 No Content on success.
     """
     await delete_conversation(conversation_id)
+    return Response(status_code=204)
+
+
+@app.post("/charts")
+async def save_chart(
+    req: ChartSaveRequest,
+) -> Dict[str, Any]:
+    """
+    Save a chart to the database.
+
+    Args:
+        req: Chart save request with title, visualization_data, call_data.
+
+    Returns:
+        Saved chart with id.
+    """
+    repo = ChartRepository()
+    chart = repo.save_chart(
+        title=req.title,
+        visualization_data=req.visualization_data,
+        call_data=req.call_data,
+    )
+    return chart
+
+
+@app.get("/charts")
+async def list_charts() -> Dict[str, Any]:
+    """
+    List all saved charts.
+
+    Returns:
+        List of saved charts.
+    """
+    repo = ChartRepository()
+    charts = repo.list_charts()
+    return {"charts": charts}
+
+
+@app.delete("/charts/{chart_id}")
+async def delete_chart(chart_id: str) -> Response:
+    """
+    Delete a saved chart.
+
+    Args:
+        chart_id: Chart identifier.
+
+    Returns:
+        204 No Content on success, 404 if not found.
+    """
+    repo = ChartRepository()
+    deleted = repo.delete_chart(chart_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chart not found")
     return Response(status_code=204)
 
 

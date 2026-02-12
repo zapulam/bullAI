@@ -1,2 +1,2 @@
+from .chart_repository import ChartRepository
 from .settings_repository import SettingsRepository
-from .time_series_repository import TimeSeriesRepository

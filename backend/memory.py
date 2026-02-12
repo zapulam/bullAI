@@ -82,6 +82,17 @@ def initialize_sqlite_db(
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS charts (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            visualization_data TEXT NOT NULL,
+            call_data TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 

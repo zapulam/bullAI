@@ -136,9 +136,6 @@ export default function TimeSeriesChart({ series, height = 320 }) {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-xs text-gray-500 mt-3">
-        Toggle series in the legend. Drag the brush to zoom.
-      </p>
     </div>
   );
 }

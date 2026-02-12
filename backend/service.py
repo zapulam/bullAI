@@ -34,7 +34,7 @@ from memory import (
     get_session_has_summary,
     update_session_summary
 )
-from repositories import SettingsRepository, TimeSeriesRepository
+from repositories import SettingsRepository
 from streaming import stream_result_events
 
 

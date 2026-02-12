@@ -16,7 +16,8 @@ from settings import settings
 async def get_screen_data(
         s,
         interval,
-        key
+        key,
+        ticker: str = "IBM",
     ) -> dict:
     """
     Get screen data.
@@ -25,21 +26,31 @@ async def get_screen_data(
         s (list): Screen and interval.
         interval (int): Data points composed in an interval.
         key (str): Alpha Vantage key.
+        ticker (str): Stock ticker symbol.
 
     Returns:
-        dict: Screen data. 
+        dict: Screen data.
     """
     if s[0] == 'sma':
-        url = f"https://www.alphavantage.co/query?function=SMA&symbol=IBM&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        data = requests.get(url).json()["Technical Analysis: SMA"]
+        url = f"https://www.alphavantage.co/query?function=SMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
+        raw = requests.get(url).json()["Technical Analysis: SMA"]
+        rows = [(date, float(payload["SMA"])) for date, payload in raw.items()]
+        rows.sort(key=lambda x: x[0])
+        data = {"title": "sma", "data": rows}
         return data
     if s[0] == 'wma':
-        url = f"https://www.alphavantage.co/query?function=WMA&symbol=IBM&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        data = requests.get(url).json()["Technical Analysis: WMA"]
+        url = f"https://www.alphavantage.co/query?function=WMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
+        raw = requests.get(url).json()["Technical Analysis: WMA"]
+        rows = [(date, float(payload["WMA"])) for date, payload in raw.items()]
+        rows.sort(key=lambda x: x[0])
+        data = {"title": "wma", "data": rows}
         return data
     if s[0] == 'ema':
-        url = f"https://www.alphavantage.co/query?function=EMA&symbol=IBM&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        data = requests.get(url).json()["Technical Analysis: EMA"]
+        url = f"https://www.alphavantage.co/query?function=EMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
+        raw = requests.get(url).json()["Technical Analysis: EMA"]
+        rows = [(date, float(payload["EMA"])) for date, payload in raw.items()]
+        rows.sort(key=lambda x: x[0])
+        data = {"title": "ema", "data": rows}
         return data
 
 
@@ -70,13 +81,20 @@ async def time_series_daily(
 
     data = requests.get(url).json()
     result["metadata"] = data["Meta Data"]
-    result["data"] = data["Time Series (Daily)"]
+    result["timeseries_data"] = data["Time Series (Daily)"]
     
-    if screens:
+    if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "daily", wrapper.context.alpha_vantage_key)
+            d = get_screen_data(s, "daily", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
+
+    result["call"] = {
+        "func": "time_series_daily",
+        "ticker": ticker,
+        "screens": screens or [],
+        "time_periods": time_periods or [],
+    }
 
     return result
 
@@ -110,11 +128,18 @@ async def time_series_weekly(
     result["metadata"] = data["Meta Data"]
     result["timeseries_data"] = data["Weekly Time Series"]
     
-    if screens:
+    if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "daily", wrapper.context.alpha_vantage_key)
+            d = get_screen_data(s, "weekly", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
+
+    result["call"] = {
+        "func": "time_series_weekly",
+        "ticker": ticker,
+        "screens": screens or [],
+        "time_periods": time_periods or [],
+    }
 
     return result
 
@@ -148,10 +173,17 @@ async def time_series_monthly(
     result["metadata"] = data["Meta Data"]
     result["timeseries_data"] = data["Monthly Time Series"]
     
-    if screens:
+    if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "daily", wrapper.context.alpha_vantage_key)
+            d = get_screen_data(s, "monthly", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
+
+    result["call"] = {
+        "func": "time_series_monthly",
+        "ticker": ticker,
+        "screens": screens or [],
+        "time_periods": time_periods or [],
+    }
 
     return result
