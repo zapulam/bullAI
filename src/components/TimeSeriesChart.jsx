@@ -11,6 +11,7 @@ import {
   Legend,
   Brush,
 } from 'recharts';
+import { useYAxis } from 'recharts/es6/hooks';
 
 const formatTimestampLabel = (value) => {
   if (!value || typeof value !== 'string') return '';
@@ -27,13 +28,55 @@ const formatTimeOnly = (value) => {
   return parts[1] || label;
 };
 
-export default function TimeSeriesChart({ series, height = 320 }) {
+const CANDLE_UP = '#22c55e';
+const CANDLE_DOWN = '#ef4444';
+
+function CandlestickShape(props) {
+  const { x, width, payload, yAxisId } = props;
+  const yAxis = useYAxis(yAxisId);
+  if (!yAxis?.scale || payload?.open == null || payload?.high == null || payload?.low == null || payload?.close == null) {
+    return null;
+  }
+  const scale = yAxis.scale;
+  const mapFn = typeof scale === 'function' ? scale : scale?.map;
+  if (typeof mapFn !== 'function') {
+    return null;
+  }
+  const open = Number(payload.open);
+  const high = Number(payload.high);
+  const low = Number(payload.low);
+  const close = Number(payload.close);
+  const bodyTop = Math.min(open, close);
+  const bodyBottom = Math.max(open, close);
+  const isUp = close >= open;
+  const fill = isUp ? CANDLE_UP : CANDLE_DOWN;
+  const stroke = isUp ? CANDLE_UP : CANDLE_DOWN;
+  const barWidth = Math.max(2, (width || 8) * 0.6);
+  const xCenter = x + (width || 8) / 2 - barWidth / 2;
+  const yHigh = mapFn(high);
+  const yLow = mapFn(low);
+  const yBodyTop = mapFn(bodyTop);
+  const yBodyBottom = mapFn(bodyBottom);
+  if (yHigh == null || yLow == null || yBodyTop == null || yBodyBottom == null) {
+    return null;
+  }
+  const bodyHeight = Math.max(1, Math.abs(yBodyBottom - yBodyTop));
+  return (
+    <g>
+      <line x1={x + (width || 8) / 2} y1={yHigh} x2={x + (width || 8) / 2} y2={yLow} stroke={stroke} strokeWidth={1} />
+      <rect x={xCenter} y={yBodyTop} width={barWidth} height={bodyHeight} fill={fill} stroke={stroke} strokeWidth={1} />
+    </g>
+  );
+}
+
+export default function TimeSeriesChart({ series, height = 320, chartType = 'simple' }) {
   const [hiddenKeys, setHiddenKeys] = useState(new Set());
 
   const chartData = useMemo(() => {
     if (!series?.points?.length) return [];
     return series.points.map((point) => ({
       ...point,
+      timestamp: point.timestamp ?? point.date,
       volume: point.volume ?? 0,
     }));
   }, [series?.points]);
@@ -117,17 +160,20 @@ export default function TimeSeriesChart({ series, height = 320 }) {
               labelStyle={{ color: '#e5e7eb' }}
             />
             <Legend onClick={handleLegendClick} />
-            {!hiddenKeys.has('open') && (
-              <Line yAxisId="price" type="monotone" dataKey="open" stroke="#34d399" dot={false} />
-            )}
-            {!hiddenKeys.has('high') && (
-              <Line yAxisId="price" type="monotone" dataKey="high" stroke="#60a5fa" dot={false} />
-            )}
-            {!hiddenKeys.has('low') && (
-              <Line yAxisId="price" type="monotone" dataKey="low" stroke="#fca5a5" dot={false} />
-            )}
-            {!hiddenKeys.has('close') && (
-              <Line yAxisId="price" type="monotone" dataKey="close" stroke="#fbbf24" dot={false} />
+            {chartType === 'simple' ? (
+              <>
+                {!hiddenKeys.has('close') && (
+                  <Line yAxisId="price" type="monotone" dataKey="close" stroke="#fbbf24" dot={false} />
+                )}
+              </>
+            ) : (
+              <Bar
+                yAxisId="price"
+                dataKey="close"
+                fill="transparent"
+                barSize={20}
+                shape={<CandlestickShape yAxisId="price" />}
+              />
             )}
             {!hiddenKeys.has('volume') && (
               <Bar yAxisId="volume" dataKey="volume" fill="#64748b" barSize={20} opacity={0.5} />

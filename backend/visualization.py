@@ -131,9 +131,14 @@ def build_visualization(tool_output: dict) -> Optional[dict]:
             "outputSize": meta.get("5. Output Size"),
         }
 
+    chart_type = call.get("chart_type", "simple")
+    if chart_type not in ("simple", "candlestick"):
+        chart_type = "simple"
+
     return {
         "title": title,
         "chartData": chart_points,
+        "chartType": chart_type,
         "screens": screens,
         "meta": meta_normalized,
         "call": call,

@@ -13,12 +13,15 @@ from agents import (
     ModelSettings,
     RunConfig,
     Runner,
+    RunContextWrapper,
+    ToolsToFinalOutputFunction,
+    ToolsToFinalOutputResult,
     WebSearchTool
 )
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from agents.mcp import MCPServerStdio, create_static_tool_filter
 from agents.models.openai_provider import OpenAIProvider
-from agents.tool import HostedMCPTool
+from agents.tool import HostedMCPTool, FunctionToolResult
 
 from dataclasses import dataclass, field
 from openai import AsyncOpenAI
@@ -59,6 +62,22 @@ class ChatService:
             time_series_weekly,
             time_series_monthly
         ]
+
+
+    def tool_handler(
+            context: RunContextWrapper[ChatContext],
+            results: List[FunctionToolResult]
+        ):
+        """
+        """
+        for result in results:
+            output = json.loads(result.output)
+            if not output["follow_up"]:
+                return ToolsToFinalOutputResult(
+                    is_final_output=True,
+                    final_output=output["content"]
+                )
+
 
 
     async def generate_summary(
@@ -136,7 +155,8 @@ class ChatService:
                 parallel_tool_calls=True,
                 store=False,
                 response_include=["reasoning.encrypted_content"]
-            )
+            ),
+            tool_use_behavior=self.tool_handler
         )
         
         # Load session

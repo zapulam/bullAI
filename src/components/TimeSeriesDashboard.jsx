@@ -37,6 +37,7 @@ export default function TimeSeriesDashboard() {
                 const viz = {
                   title: chart.title,
                   chartData: chart.visualization_data?.chartData || [],
+                  chartType: chart.visualization_data?.chartType ?? 'simple',
                   screens: chart.visualization_data?.screens || [],
                   meta: chart.visualization_data?.meta || {},
                   call: chart.call_data || {},

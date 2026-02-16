@@ -60,6 +60,7 @@ async def time_series_daily(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
         visual: bool,
+        chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
@@ -68,9 +69,10 @@ async def time_series_daily(
 
     Args:
         ticker (str): Stock ticker.
-        visual (str): Do you wish to create a visual?
+        visual (bool): Do you wish to create a visual?
+        chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_period (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
@@ -93,6 +95,7 @@ async def time_series_daily(
     result["call"] = {
         "func": "time_series_daily",
         "ticker": ticker,
+        "chart_type": chart_type,
         "screens": screens or [],
         "time_periods": time_periods or [],
     }
@@ -110,6 +113,7 @@ async def time_series_weekly(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
         visual: bool,
+        chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
@@ -118,9 +122,10 @@ async def time_series_weekly(
 
     Args:
         ticker (str): Stock ticker.
-        visual (str): Do you wish to create a visual?
+        visual (bool): Do you wish to create a visual?
+        chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_period (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
@@ -143,6 +148,7 @@ async def time_series_weekly(
     result["call"] = {
         "func": "time_series_weekly",
         "ticker": ticker,
+        "chart_type": chart_type,
         "screens": screens or [],
         "time_periods": time_periods or [],
     }
@@ -160,6 +166,7 @@ async def time_series_monthly(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
         visual: bool,
+        chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
@@ -168,9 +175,10 @@ async def time_series_monthly(
 
     Args:
         ticker (str): Stock ticker.
-        visual (str): Do you wish to create a visual?
+        visual (bool): Do you wish to create a visual?
+        chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_period (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
@@ -193,6 +201,7 @@ async def time_series_monthly(
     result["call"] = {
         "func": "time_series_monthly",
         "ticker": ticker,
+        "chart_type": chart_type,
         "screens": screens or [],
         "time_periods": time_periods or [],
     }
