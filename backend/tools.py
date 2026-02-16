@@ -19,7 +19,7 @@ async def get_screen_data(
         s,
         interval,
         key,
-        ticker: str = "IBM",
+        ticker: str,
     ) -> dict:
     """
     Get screen data.
@@ -35,25 +35,110 @@ async def get_screen_data(
     """
     if s[0] == 'sma':
         url = f"https://www.alphavantage.co/query?function=SMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        raw = requests.get(url).json()["Technical Analysis: SMA"]
+        data = requests.get(url).json()
+        if "Technical Analysis: SMA" not in data:
+            error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
+            raise ValueError(error_msg)
+        raw = data["Technical Analysis: SMA"]
         rows = [(date, float(payload["SMA"])) for date, payload in raw.items()]
         rows.sort(key=lambda x: x[0])
         data = {"title": "sma", "data": rows}
         return data
     if s[0] == 'wma':
         url = f"https://www.alphavantage.co/query?function=WMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        raw = requests.get(url).json()["Technical Analysis: WMA"]
+        data = requests.get(url).json()
+        if "Technical Analysis: WMA" not in data:
+            error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
+            raise ValueError(error_msg)
+        raw = data["Technical Analysis: WMA"]
         rows = [(date, float(payload["WMA"])) for date, payload in raw.items()]
         rows.sort(key=lambda x: x[0])
         data = {"title": "wma", "data": rows}
         return data
     if s[0] == 'ema':
         url = f"https://www.alphavantage.co/query?function=EMA&symbol={ticker}&interval={interval}&time_period={s[1]}&series_type=open&apikey={key}"
-        raw = requests.get(url).json()["Technical Analysis: EMA"]
+        data = requests.get(url).json()
+        if "Technical Analysis: EMA" not in data:
+            error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
+            raise ValueError(error_msg)
+        raw = data["Technical Analysis: EMA"]
         rows = [(date, float(payload["EMA"])) for date, payload in raw.items()]
         rows.sort(key=lambda x: x[0])
         data = {"title": "ema", "data": rows}
         return data
+
+
+### Chart Refresh (standalone, no agent)
+async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
+    """
+    Execute a time-series chart call using call_data. Used for chart refresh.
+
+    Args:
+        call_data: Dict with func, ticker, chart_type, screens, time_periods.
+        alpha_vantage_key: Alpha Vantage API key.
+
+    Returns:
+        Tool result dict with visualization key.
+
+    Raises:
+        ValueError: If call_data is invalid or func is unsupported.
+    """
+    if not call_data or not isinstance(call_data, dict):
+        raise ValueError("call_data is required and must be a dict")
+    func = call_data.get("func")
+    ticker = call_data.get("ticker")
+    chart_type = call_data.get("chart_type", "simple")
+    screens = call_data.get("screens") or []
+    time_periods = call_data.get("time_periods") or []
+
+    if not func or not ticker:
+        raise ValueError("call_data must include func and ticker")
+
+    if func not in ("time_series_daily", "time_series_weekly", "time_series_monthly"):
+        raise ValueError(f"Unsupported func: {func}")
+
+    if func == "time_series_daily":
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={alpha_vantage_key}"
+        ts_key = "Time Series (Daily)"
+        interval = "daily"
+    elif func == "time_series_weekly":
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={ticker}&apikey={alpha_vantage_key}"
+        ts_key = "Weekly Time Series"
+        interval = "weekly"
+    else:
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={alpha_vantage_key}"
+        ts_key = "Monthly Time Series"
+        interval = "monthly"
+
+    data = requests.get(url).json()
+    if "Error Message" in data:
+        raise ValueError(data.get("Error Message", "Alpha Vantage API error"))
+    if "Note" in data:
+        raise ValueError(data.get("Note", "Alpha Vantage rate limit or notice"))
+
+    result = {
+        "metadata": data.get("Meta Data"),
+        "viz": True,
+        "call": {
+            "func": func,
+            "ticker": ticker,
+            "chart_type": chart_type,
+            "screens": screens,
+            "time_periods": time_periods,
+        },
+    }
+
+    if screens and time_periods:
+        result["screen_data"] = []
+        for s in zip(screens, time_periods):
+            d = await get_screen_data(s, interval, alpha_vantage_key, ticker)
+            result["screen_data"].append(d)
+
+    viz_obj = build_visualization(result)
+    if viz_obj is not None:
+        result["visualization"] = viz_obj
+
+    return result
 
 
 ### Function Tools
@@ -72,7 +157,8 @@ async def quote(
 
     result = {
         "metadata": None,
-        "data": None
+        "data": None,
+        "follow_up": True
     }
 
     data = requests.get(url).json()
@@ -100,8 +186,7 @@ async def time_series_daily(
         ticker: str,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None,
-        follow_up: bool = False
+        time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
     Get daily time series data/chart of the global equity specified.
@@ -111,23 +196,23 @@ async def time_series_daily(
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added
-        follow_up (bool): Should you write a follow up response or stop and just display the chart?
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
     result = {
         "metadata": None,
-        "timeseries_data": None
+        "follow_up": False
     }
 
     data = requests.get(url).json()
+    if data['Information'].startswith("We have detected your API key as"):
+        result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
     result["metadata"] = data["Meta Data"]
-    result["timeseries_data"] = data["Time Series (Daily)"]
     
     if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "daily", wrapper.context.alpha_vantage_key, ticker)
+            d = await get_screen_data(s, "daily", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
 
     result["call"] = {
@@ -151,8 +236,7 @@ async def time_series_weekly(
         ticker: str,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None,
-        follow_up: bool = False
+        time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
     Get weekly time series data/chart of the global equity specified.
@@ -167,17 +251,18 @@ async def time_series_weekly(
 
     result = {
         "metadata": None,
-        "timeseries_data": None
+        "follow_up": False
     }
 
     data = requests.get(url).json()
+    if data['Information'].startswith("We have detected your API key as"):
+        result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
     result["metadata"] = data["Meta Data"]
-    result["timeseries_data"] = data["Weekly Time Series"]
     
     if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "weekly", wrapper.context.alpha_vantage_key, ticker)
+            d = await get_screen_data(s, "weekly", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
 
     result["call"] = {
@@ -201,8 +286,7 @@ async def time_series_monthly(
         ticker: str,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None,
-        follow_up: bool = False
+        time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
     Get monthly time series data/chart of the global equity specified.
@@ -214,20 +298,22 @@ async def time_series_monthly(
         time_periods (List[int]): Time period for each screen added
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
+    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
     result = {
         "metadata": None,
-        "timeseries_data": None
+        "follow_up": False
     }
 
     data = requests.get(url).json()
+    if data['Information'].startswith("We have detected your API key as"):
+        result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
     result["metadata"] = data["Meta Data"]
-    result["timeseries_data"] = data["Monthly Time Series"]
     
     if screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
-            d = get_screen_data(s, "monthly", wrapper.context.alpha_vantage_key, ticker)
+            d = await get_screen_data(s, "monthly", wrapper.context.alpha_vantage_key, ticker)
             result["screen_data"].append(d)
 
     result["call"] = {

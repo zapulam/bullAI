@@ -87,6 +87,32 @@ class ChartRepository:
             })
         return charts
 
+    def update_chart(self, chart_id: str, visualization_data: dict) -> Optional[Dict[str, Any]]:
+        """
+        Update a chart's visualization_data.
+
+        Args:
+            chart_id: Chart identifier.
+            visualization_data: New visualization dict (chartData, chartType, screens, meta).
+
+        Returns:
+            Updated chart dict or None if not found.
+        """
+        viz_json = json.dumps(visualization_data)
+        with get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE charts
+                SET visualization_data = ?
+                WHERE id = ?
+                """,
+                (viz_json, chart_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                return None
+        return self.get_chart(chart_id)
+
     def get_chart(self, chart_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a chart by id.

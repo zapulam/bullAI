@@ -38,6 +38,7 @@ from memory import (
 )
 from repositories import ChartRepository, SettingsRepository
 from settings import settings
+from tools import execute_chart_call
 from streaming import (
     ChatChunkEvent,
     ChatToolInput,
@@ -201,6 +202,7 @@ async def create_chat(
                     yield f"data: {event.model_dump_json()}\n\n"
 
                 elif chunk.get("type") == "complete":
+                    print(f"THERE: {chunk}")
                     content_str = chunk.get("content", "")
                     thought = parser.thought
                     response = parser.response
@@ -315,6 +317,53 @@ async def list_charts() -> Dict[str, Any]:
     repo = ChartRepository()
     charts = repo.list_charts()
     return {"charts": charts}
+
+
+@app.post("/charts/{chart_id}/refresh")
+async def refresh_chart(chart_id: str) -> Dict[str, Any]:
+    """
+    Refresh a chart by re-executing its call_data and updating visualization.
+
+    Args:
+        chart_id: Chart identifier.
+
+    Returns:
+        Updated chart with fresh visualization_data.
+    """
+    chart_repo = ChartRepository()
+    settings_repo = SettingsRepository()
+    chart = chart_repo.get_chart(chart_id)
+    if not chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+    call_data = chart.get("call_data") or {}
+    if not call_data or not call_data.get("func"):
+        raise HTTPException(status_code=400, detail="Chart has no valid call_data")
+    alpha_vantage_key = settings_repo.get_alpha_vantage_api_key()
+    if not alpha_vantage_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Alpha Vantage API key not configured. Add it in Settings.",
+        )
+    try:
+        result = await execute_chart_call(call_data, alpha_vantage_key)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=502, detail=f"Failed to fetch chart data: {e}")
+    viz = result.get("visualization")
+    if not viz:
+        raise HTTPException(status_code=502, detail="No visualization data returned")
+    visualization_data = {
+        "chartData": viz.get("chartData", []),
+        "chartType": viz.get("chartType", "simple"),
+        "screens": viz.get("screens", []),
+        "meta": viz.get("meta", {}),
+    }
+    updated = chart_repo.update_chart(chart_id, visualization_data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Chart not found")
+    return updated
 
 
 @app.delete("/charts/{chart_id}")

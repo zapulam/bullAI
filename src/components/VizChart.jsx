@@ -131,7 +131,16 @@ function ChartTooltip({ active, payload, label, screenTitles = [] }) {
 
 function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screenTitles, chartHeight }) {
   return (
-    <div style={{ width: '100%', height: chartHeight, minHeight: 200 }}>
+    <div
+      className="viz-chart"
+      style={{
+        width: '100%',
+        height: chartHeight,
+        minHeight: 200,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
+    >
       <ResponsiveContainer width="100%" height={chartHeight} minHeight={200}>
         <ComposedChart data={chartData} margin={{ top: 10, right: 24, left: 0, bottom: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
@@ -160,7 +169,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
             content={(props) => <ChartTooltip {...props} screenTitles={screenTitles} />}
             contentStyle={{ background: 'transparent', border: 'none', padding: 0 }}
           />
-          <Legend onClick={handleLegendClick} />
+          <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }} />
           {chartType === 'simple' ? (
             <>
               {!hiddenKeys.has('close') && (
@@ -195,21 +204,19 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
               shape={<CandlestickShape yAxisId="price" />}
             />
           )}
-          {!hiddenKeys.has('volume') && (
-            <Bar
-              yAxisId="volume"
-              dataKey="volume"
-              fill="#64748b"
-              barSize={20}
-              opacity={0.5}
-            />
-          )}
+          <Bar
+            yAxisId="volume"
+            dataKey="volume"
+            fill="#64748b"
+            barSize={20}
+            opacity={hiddenKeys.has('volume') ? 0 : 0.5}
+          />
           <Brush
             dataKey="timestamp"
-            height={12}
+            height={6}
             stroke="#22c55e"
             fill="#1f2937"
-            travellerWidth={4}
+            travellerWidth={28}
           />
         </ComposedChart>
       </ResponsiveContainer>
@@ -286,7 +293,7 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
 
   if (!visualization || !chartData.length) {
     return (
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 text-sm text-gray-400">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 text-xs text-gray-400">
         No visualization data available.
       </div>
     );
@@ -349,10 +356,10 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
             }}
           >
             <div
-              className="bg-surface-elevated border border-divider rounded-xl p-4 w-full max-w-[90%]"
+              className="bg-surface-elevated border border-divider rounded-xl p-4 w-full max-w-[100%]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-s text-gray-400 mb-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-gray-200 font-semibold">{title}</span>
                   {meta?.symbol && <span>Symbol: {meta.symbol}</span>}

@@ -213,3 +213,8 @@ a:hover {
   margin-bottom: 0.25em;
 }
 
+/* Prevent selection highlight and focus outlines when interacting with charts */
+.viz-chart * {
+  outline: none;
+}
+

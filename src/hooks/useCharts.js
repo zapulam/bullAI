@@ -5,6 +5,7 @@ export function useCharts() {
   const [charts, setCharts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshingChartId, setRefreshingChartId] = useState(null);
 
   const listCharts = useCallback(async () => {
     setLoading(true);
@@ -67,6 +68,28 @@ export function useCharts() {
     }
   }, []);
 
+  const refreshChart = useCallback(async (chartId) => {
+    setError(null);
+    setRefreshingChartId(chartId);
+    try {
+      const url = buildApiUrl(`${API_ENDPOINTS.CHARTS}/${chartId}/refresh`);
+      const response = await fetch(url, { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message = data.detail || `Failed to refresh chart: ${response.statusText}`;
+        throw new Error(message);
+      }
+      const updated = await response.json();
+      setCharts((prev) => prev.map((c) => (c.id === chartId ? updated : c)));
+      return updated;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setRefreshingChartId(null);
+    }
+  }, []);
+
   useEffect(() => {
     listCharts();
   }, [listCharts]);
@@ -75,8 +98,10 @@ export function useCharts() {
     charts,
     loading,
     error,
+    refreshingChartId,
     listCharts,
     saveChart,
     deleteChart,
+    refreshChart,
   };
 }

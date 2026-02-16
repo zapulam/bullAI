@@ -41,6 +41,27 @@ from repositories import SettingsRepository
 from streaming import stream_result_events
 
 
+# def tool_handler(
+#         context: RunContextWrapper[ChatContext],
+#         results: List[FunctionToolResult]
+#     ):
+#     """
+#     Adds option to stop tool call on chart call if agent desires.
+#     """
+#     for result in results:
+#         output = result.output
+#         print(f"HERE: {output}")
+#         if not getattr(output, "follow_up", True):
+#             return ToolsToFinalOutputResult(
+#                 is_final_output=True,
+#                 final_output=output
+#             )
+#     return ToolsToFinalOutputResult(
+#         is_final_output=False,
+#         final_output=results[-1].output
+#     )
+
+
 @dataclass
 class ChatService:
     openai_client: AsyncOpenAI
@@ -63,22 +84,6 @@ class ChatService:
             time_series_weekly,
             time_series_monthly
         ]
-
-
-    def tool_handler(
-            context: RunContextWrapper[ChatContext],
-            results: List[FunctionToolResult]
-        ):
-        """
-        Adds option to stop tool call on chart call if agent desires.
-        """
-        for result in results:
-            output = json.loads(result.output)
-            if not output["follow_up"]:
-                return ToolsToFinalOutputResult(
-                    is_final_output=True,
-                    final_output=output["content"]
-                )
 
 
     async def generate_summary(
@@ -157,7 +162,7 @@ class ChatService:
                 store=False,
                 response_include=["reasoning.encrypted_content"]
             ),
-            tool_use_behavior=self.tool_handler
+            # tool_use_behavior=tool_handler
         )
         
         # Load session
