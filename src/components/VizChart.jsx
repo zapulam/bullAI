@@ -71,6 +71,64 @@ const formatTimeOnly = (value) => {
   return parts[1] || label;
 };
 
+function formatVolume(n) {
+  if (n == null || Number.isNaN(Number(n))) return '-';
+  const num = Number(n);
+  if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+  return String(Math.round(num));
+}
+
+function formatPrice(v) {
+  if (v == null || Number.isNaN(Number(v))) return '-';
+  return Number(v).toFixed(2);
+}
+
+function ChartTooltip({ active, payload, label, screenTitles = [] }) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0]?.payload;
+  if (!p) return null;
+  const screenKeys = screenTitles.filter((k) => p[k] != null);
+  return (
+    <div
+      className="rounded-lg border px-3 py-2 text-xs font-mono shadow-lg"
+      style={{
+        background: '#0f172a',
+        borderColor: '#1f2937',
+        color: '#e5e7eb',
+      }}
+    >
+      <div className="mb-1.5 font-semibold text-gray-200">
+        {formatTimestampLabel(p.timestamp || label)}
+      </div>
+      <div className="grid grid-cols-4 gap-x-4 gap-y-0.5">
+        <span className="text-gray-400">O</span>
+        <span>{formatPrice(p.open)}</span>
+        <span className="text-gray-400">H</span>
+        <span>{formatPrice(p.high)}</span>
+        <span className="text-gray-400">L</span>
+        <span>{formatPrice(p.low)}</span>
+        <span className="text-gray-400">C</span>
+        <span>{formatPrice(p.close)}</span>
+      </div>
+      <div className="mt-1.5 border-t border-gray-700 pt-1.5">
+        <span className="text-gray-400">Vol </span>
+        <span>{formatVolume(p.volume)}</span>
+      </div>
+      {screenKeys.length > 0 && (
+        <div className="mt-1 border-t border-gray-700 pt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+          {screenKeys.map((k) => (
+            <span key={k}>
+              <span className="text-gray-400">{k} </span>
+              <span>{formatPrice(p[k])}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screenTitles, chartHeight }) {
   return (
     <div style={{ width: '100%', height: chartHeight, minHeight: 200 }}>
@@ -99,11 +157,8 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
             width={40}
           />
           <Tooltip
-            labelFormatter={formatTimestampLabel}
-            formatter={(value, name) => [value, name]}
-            contentStyle={{ background: '#0f172a', border: '1px solid #1f2937' }}
-            itemStyle={{ color: '#e5e7eb' }}
-            labelStyle={{ color: '#e5e7eb' }}
+            content={(props) => <ChartTooltip {...props} screenTitles={screenTitles} />}
+            contentStyle={{ background: 'transparent', border: 'none', padding: 0 }}
           />
           <Legend onClick={handleLegendClick} />
           {chartType === 'simple' ? (
@@ -149,7 +204,13 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
               opacity={0.5}
             />
           )}
-          <Brush dataKey="timestamp" height={20} stroke="#22c55e" />
+          <Brush
+            dataKey="timestamp"
+            height={12}
+            stroke="#22c55e"
+            fill="#1f2937"
+            travellerWidth={4}
+          />
         </ComposedChart>
       </ResponsiveContainer>
     </div>

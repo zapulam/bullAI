@@ -14,6 +14,7 @@ from settings import settings
 from visualization import build_visualization
 
 
+### Helper Functions
 async def get_screen_data(
         s,
         interval,
@@ -55,29 +56,66 @@ async def get_screen_data(
         return data
 
 
+### Function Tools
+@function_tool()
+async def quote(
+        wrapper: RunContextWrapper[ChatContext],
+        ticker: str,
+    ) -> dict[str, Any]:
+    """
+    Get current price data of the global equity specified.
+
+    Args:
+        ticker (str): Stock ticker.
+    """
+    url = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
+
+    result = {
+        "metadata": None,
+        "data": None
+    }
+
+    data = requests.get(url).json()
+    result["metadata"] = {
+        "ticker": data["Global Quote"]["01. symbol"],
+        "last_trading_day": data["Global Quote"]["07. latest trading day"]
+    }
+    result["data"] = {
+        "current_price": data["Global Quote"]["05. price"],
+        "open": data["Global Quote"]["02. open"],
+        "high": data["Global Quote"]["03. high"],
+        "low": data["Global Quote"]["04. low"],
+        "previous_close": data["Global Quote"]["08. previous close"],
+        "change": data["Global Quote"]["09. change"],
+        "percent_change": data["Global Quote"]["10. change percent"],
+        "volume": data["Global Quote"]["06. volume"]
+    }
+
+    return result
+
+
 @function_tool()
 async def time_series_daily(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
-        visual: bool,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None
+        time_periods: Optional[List[int]] = None,
+        follow_up: bool = False
     ) -> dict[str, Any]:
     """
-    Returns daily time series of the global equity specified.
+    Get daily time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
-        visual (bool): Do you wish to create a visual?
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added
+        follow_up (bool): Should you write a follow up response or stop and just display the chart?
     """
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
     result = {
-        "viz": visual,
         "metadata": None,
         "timeseries_data": None
     }
@@ -100,10 +138,9 @@ async def time_series_daily(
         "time_periods": time_periods or [],
     }
 
-    if visual:
-        viz_obj = build_visualization(result)
-        if viz_obj is not None:
-            result["visualization"] = viz_obj
+    viz_obj = build_visualization(result)
+    if viz_obj is not None:
+        result["visualization"] = viz_obj
 
     return result
 
@@ -112,17 +149,16 @@ async def time_series_daily(
 async def time_series_weekly(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
-        visual: bool,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None
+        time_periods: Optional[List[int]] = None,
+        follow_up: bool = False
     ) -> dict[str, Any]:
     """
-    Returns weekly time series of the global equity specified.
+    Get weekly time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
-        visual (bool): Do you wish to create a visual?
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added
@@ -130,7 +166,6 @@ async def time_series_weekly(
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
     result = {
-        "viz": visual,
         "metadata": None,
         "timeseries_data": None
     }
@@ -153,10 +188,9 @@ async def time_series_weekly(
         "time_periods": time_periods or [],
     }
 
-    if visual:
-        viz_obj = build_visualization(result)
-        if viz_obj is not None:
-            result["visualization"] = viz_obj
+    viz_obj = build_visualization(result)
+    if viz_obj is not None:
+        result["visualization"] = viz_obj
 
     return result
 
@@ -165,17 +199,16 @@ async def time_series_weekly(
 async def time_series_monthly(
         wrapper: RunContextWrapper[ChatContext],
         ticker: str,
-        visual: bool,
         chart_type: Literal["simple", "candlestick"],
         screens: Optional[List[Literal["sma", "ema", "wma"]]] = None,
-        time_periods: Optional[List[int]] = None
+        time_periods: Optional[List[int]] = None,
+        follow_up: bool = False
     ) -> dict[str, Any]:
     """
-    Returns monthly time series of the global equity specified.
+    Get monthly time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
-        visual (bool): Do you wish to create a visual?
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added
@@ -183,7 +216,6 @@ async def time_series_monthly(
     url = f'https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={wrapper.context.alpha_vantage_key}'
 
     result = {
-        "viz": visual,
         "metadata": None,
         "timeseries_data": None
     }
@@ -206,9 +238,8 @@ async def time_series_monthly(
         "time_periods": time_periods or [],
     }
 
-    if visual:
-        viz_obj = build_visualization(result)
-        if viz_obj is not None:
-            result["visualization"] = viz_obj
+    viz_obj = build_visualization(result)
+    if viz_obj is not None:
+        result["visualization"] = viz_obj
 
     return result

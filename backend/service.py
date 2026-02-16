@@ -58,6 +58,7 @@ class ChatService:
         """
         self.base_tools = [
             WebSearchTool(),
+            quote,
             time_series_daily,
             time_series_weekly,
             time_series_monthly
@@ -69,6 +70,7 @@ class ChatService:
             results: List[FunctionToolResult]
         ):
         """
+        Adds option to stop tool call on chart call if agent desires.
         """
         for result in results:
             output = json.loads(result.output)
@@ -77,7 +79,6 @@ class ChatService:
                     is_final_output=True,
                     final_output=output["content"]
                 )
-
 
 
     async def generate_summary(
