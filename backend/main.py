@@ -202,11 +202,10 @@ async def create_chat(
                     yield f"data: {event.model_dump_json()}\n\n"
 
                 elif chunk.get("type") == "complete":
-                    print(f"THERE: {chunk}")
                     content_str = chunk.get("content", "")
                     thought = parser.thought
                     response = parser.response
-                    status = ""
+                    status = None
 
                     try:
                         content_json = json.loads(content_str)

@@ -379,10 +379,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                       <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
                         {getStatusIcon('tool_call')}
                         <div className="flex flex-col text-left min-w-0">
-                          <span className="text-gray-200">Tool: {details.toolName}</span>
-                          {details.argsPretty && (
-                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
-                          )}
+                          <span className="text-gray-200">Tool called: {details.toolName}</span>
                         </div>
                       </div>
                     </div>
@@ -400,7 +397,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                   </div>
                 )}
                 {thought && (
-                  <div className="mt-2 text-xs text-gray-400 whitespace-normal break-words text-left">
+                  <div className="mt-2 mb-2 text-xs text-gray-400 whitespace-normal break-words text-left">
                     <button
                       type="button"
                       onClick={() => hasResponse && setIsThoughtExpanded(prev => !prev)}
@@ -487,10 +484,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                       <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
                         {getStatusIcon('tool_call')}
                         <div className="flex flex-col text-left min-w-0">
-                          <span className="text-gray-200">Tool: {details.toolName}</span>
-                          {details.argsPretty && (
-                            <pre className="mt-0.5 text-gray-400 whitespace-pre-wrap break-words font-mono text-xs">{details.argsPretty}</pre>
-                          )}
+                          <span className="text-gray-200">Tool called: {details.toolName}</span>
                         </div>
                       </div>
                     </div>
@@ -537,12 +531,7 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                         {getStatusIcon(event.type)}
                       </div>
                       <div className="flex flex-col text-left">
-                        <span className="text-gray-200">Tool: {details.toolName}</span>
-                        {details.argsPretty && (
-                          <pre className="mt-1 text-xs font-mono whitespace-pre-wrap break-words text-gray-100">
-                            {details.argsPretty}
-                          </pre>
-                        )}
+                        <span className="text-gray-200">Tool called: {details.toolName}</span>
                       </div>
                     </div>
                   );

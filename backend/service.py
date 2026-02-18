@@ -41,25 +41,24 @@ from repositories import SettingsRepository
 from streaming import stream_result_events
 
 
-# def tool_handler(
-#         context: RunContextWrapper[ChatContext],
-#         results: List[FunctionToolResult]
-#     ):
-#     """
-#     Adds option to stop tool call on chart call if agent desires.
-#     """
-#     for result in results:
-#         output = result.output
-#         print(f"HERE: {output}")
-#         if not getattr(output, "follow_up", True):
-#             return ToolsToFinalOutputResult(
-#                 is_final_output=True,
-#                 final_output=output
-#             )
-#     return ToolsToFinalOutputResult(
-#         is_final_output=False,
-#         final_output=results[-1].output
-#     )
+def tool_handler(
+        context: RunContextWrapper[ChatContext],
+        results: List[FunctionToolResult]
+    ):
+    """
+    Adds option to stop tool call on chart call if agent desires.
+    """
+    for result in results:
+        output = result.output
+        if not getattr(output, "follow_up", True):
+            return ToolsToFinalOutputResult(
+                is_final_output=True,
+                final_output=output
+            )
+    return ToolsToFinalOutputResult(
+        is_final_output=False,
+        final_output=None
+    )
 
 
 @dataclass
@@ -162,7 +161,7 @@ class ChatService:
                 store=False,
                 response_include=["reasoning.encrypted_content"]
             ),
-            # tool_use_behavior=tool_handler
+            tool_use_behavior=tool_handler
         )
         
         # Load session
