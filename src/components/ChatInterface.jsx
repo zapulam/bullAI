@@ -564,8 +564,8 @@ export default function ChatInterface({
                 placeholder={inputPlaceholder}
                 disabled={isLoading || isApiKeyLoading || !hasApiKey}
                 rows={1}
-                className="w-full text-s align-middle bg-surface-elevated text-white rounded-lg px-4 py-3 border border-divider focus:border-green-500 focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                style={{ minHeight: '44px', maxHeight: '200px', boxSizing: 'border-box' }}
+                className="w-full text-s align-middle bg-surface-elevated text-white align-middle rounded-lg px-4 py-3 border border-divider focus:border-green-500 focus:outline-none resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                style={{ minHeight: '42px', maxHeight: '200px', boxSizing: 'border-box' }}
               />
               
               {/* Commands Popup */}
@@ -604,7 +604,7 @@ export default function ChatInterface({
                 type="button"
                 onClick={cancelRequest}
                 className="bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 flex items-center justify-center flex-shrink-0 cursor-pointer"
-                style={{ height: '44px', width: '44px', padding: 0, boxSizing: 'border-box' }}
+                style={{ height: '42px', width: '42px', padding: 0, boxSizing: 'border-box' }}
                 title="Stop generating"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -616,7 +616,7 @@ export default function ChatInterface({
                 type="submit"
                 disabled={!inputValue.trim() || isLoading || isApiKeyLoading || !hasApiKey}
                 className="bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0 cursor-pointer"
-                style={{ height: '44px', width: '44px', padding: 0, boxSizing: 'border-box' }}
+                style={{ height: '42px', width: '42px', padding: 0, boxSizing: 'border-box' }}
                 title="Send message"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">

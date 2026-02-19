@@ -19,8 +19,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
 VENV_DIR = REPO_ROOT / ".venv"
 
-# ANSI for terminal colors (whole backend line in green)
+# ANSI for terminal colors
 GREEN = "\033[32m"
+CYAN = "\033[36m"
 RESET = "\033[0m"
 
 
@@ -112,12 +113,17 @@ def main():
         raise RuntimeError("Virtual environment not found. Run scripts/setup.py first.")
 
     # Python is used here to provide consistent process and signal control across OSes.
-    backend_cmd = [str(venv_python), "-m", "uvicorn", "main:app", "--reload", "--port", "5000"]
-    frontend_cmd = ["npm", "run", "dev"]
+    backend_cmd = [str(venv_python), "-m", "uvicorn", "main:app", "--reload", "--port", "5000", "--no-access-log"]
+    frontend_cmd = ["node", "node_modules/vite/bin/vite.js"]
 
     output_lock = threading.Lock()
 
     with output_lock:
+        print()
+        print("  🏜️  bullAI")
+        print("  Backend:  http://127.0.0.1:5000")
+        print("  Frontend: http://localhost:3000")
+        print()
         print("Starting backend...")
     backend_proc = start_process(backend_cmd, BACKEND_DIR, capture_output=True)
     backend_relay = threading.Thread(
@@ -130,10 +136,12 @@ def main():
 
     with output_lock:
         print("Starting frontend...")
+        print()
     frontend_proc = start_process(frontend_cmd, REPO_ROOT, capture_output=True)
     frontend_relay = threading.Thread(
         target=relay_output,
         args=(frontend_proc.stdout, "[frontend] ", output_lock),
+        kwargs={"color": CYAN},
         daemon=True,
     )
     frontend_relay.start()
@@ -145,7 +153,7 @@ def main():
             return
         stopping["value"] = True
         with output_lock:
-            print("Stopping processes...")
+            print("Stopping processes...\n")
             sys.stdout.flush()
         stop_process(frontend_proc)
         stop_process(backend_proc)

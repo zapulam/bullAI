@@ -300,11 +300,11 @@ export default function Settings() {
             ) : null}
             {memoryError ? <p className="text-sm text-red-400">{memoryError}</p> : null}
             <p className="text-xs text-gray-400 mb-6">
-              Store long-term facts, contacts, and preferences. Markdown is supported.
+              Store long-term facts, contacts, and preferences.
             </p>
             <textarea
               className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm font-mono resize-y min-h-[200px]"
-              placeholder="Enter your memories as markdown..."
+              placeholder="Enter your preferences as markdown..."
               value={memoryContent}
               onChange={(e) => setMemoryContent(e.target.value.slice(0, 5000))}
               maxLength={5000}
