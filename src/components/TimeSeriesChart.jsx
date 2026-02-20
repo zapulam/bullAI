@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   Brush,
 } from 'recharts';
 import { useYAxis } from 'recharts/es6/hooks';
@@ -122,8 +121,6 @@ function CandlestickShape(props) {
 }
 
 export default function TimeSeriesChart({ series, height = 320, chartType = 'simple' }) {
-  const [hiddenKeys, setHiddenKeys] = useState(new Set());
-
   const chartData = useMemo(() => {
     if (!series?.points?.length) return [];
     return series.points.map((point) => ({
@@ -133,10 +130,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
     }));
   }, [series?.points]);
 
-  const n = chartData.length;
-  const defaultStart = 0;
-  const defaultEnd = Math.max(0, n - 1);
-  const [brushRange, setBrushRange] = useState({ startIndex: defaultStart, endIndex: defaultEnd });
+  const [brushRange, setBrushRange] = useState({ startIndex: 0, endIndex: 0 });
 
   useEffect(() => {
     const len = chartData.length;
@@ -151,20 +145,6 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
     if (startIndex == null || endIndex == null || endIndex < startIndex) return chartData;
     return chartData.slice(startIndex, endIndex + 1);
   }, [chartData, brushRange]);
-
-  const handleLegendClick = (payload) => {
-    const key = payload?.dataKey;
-    if (!key) return;
-    setHiddenKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
 
   const handleBrushChange = (range) => {
     if (range?.startIndex != null && range?.endIndex != null) {
@@ -256,11 +236,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
               labelStyle={{ color: '#e5e7eb' }}
             />
             {chartType === 'simple' ? (
-              <>
-                {!hiddenKeys.has('close') && (
-                  <Line yAxisId="price" type="monotone" dataKey="close" stroke={closeStrokeColor} dot={false} legendType="none" />
-                )}
-              </>
+              <Line yAxisId="price" type="monotone" dataKey="close" stroke={closeStrokeColor} dot={false} legendType="none" />
             ) : (
               <Bar
                 yAxisId="price"
@@ -271,9 +247,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
                 legendType="none"
               />
             )}
-            {!hiddenKeys.has('volume') && (
-              <Bar yAxisId="volume" dataKey="volume" fill="#64748b" barSize={20} opacity={0.5} legendType="none" />
-            )}
+            <Bar yAxisId="volume" dataKey="volume" fill="#64748b" barSize={20} opacity={0.5} legendType="none" />
           </ComposedChart>
         </ResponsiveContainer>
         <ResponsiveContainer width="100%" height={BRUSH_HEIGHT} style={{ flexShrink: 0 }}>

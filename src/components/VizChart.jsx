@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   Brush,
 } from 'recharts';
 import { useYAxis } from 'recharts/es6/hooks';
@@ -192,11 +191,8 @@ function ChartTooltip({ active, payload, label, screenTitles = [] }) {
 
 const BRUSH_HEIGHT = 4;
 
-function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight }) {
-  const n = chartData.length;
-  const defaultStart = 0;
-  const defaultEnd = Math.max(0, n - 1);
-  const [brushRange, setBrushRange] = useState({ startIndex: defaultStart, endIndex: defaultEnd });
+function ChartBody({ chartData, chartType, screenTitles, chartHeight }) {
+  const [brushRange, setBrushRange] = useState({ startIndex: 0, endIndex: 0 });
 
   useEffect(() => {
     const len = chartData.length;
@@ -223,7 +219,7 @@ function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight
         : CANDLE_DOWN
       : '#fbbf24';
 
-  const mainHeight = Math.max(200, chartHeight - BRUSH_HEIGHT);
+  const mainHeight = Math.max(200, (chartHeight ?? DEFAULT_CHART_HEIGHT) - BRUSH_HEIGHT);
 
   const handleBrushChange = (range) => {
     if (range?.startIndex != null && range?.endIndex != null) {
@@ -233,10 +229,9 @@ function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight
 
   return (
     <div
-      className="viz-chart"
+      className="viz-chart h-full items-center"
       style={{
         width: '100%',
-        height: chartHeight,
         minHeight: 200 + BRUSH_HEIGHT,
         display: 'flex',
         flexDirection: 'column',
@@ -283,29 +278,25 @@ function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight
           />
           {chartType === 'simple' ? (
             <>
-              {!hiddenKeys.has('close') && (
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="close"
+                stroke={closeStrokeColor}
+                dot={false}
+                legendType="none"
+              />
+              {screenTitles.map((screenTitle, idx) => (
                 <Line
+                  key={screenTitle}
                   yAxisId="price"
                   type="monotone"
-                  dataKey="close"
-                  stroke={closeStrokeColor}
+                  dataKey={screenTitle}
+                  stroke={SCREEN_COLORS[idx % SCREEN_COLORS.length]}
                   dot={false}
-                  legendType="none"
+                  strokeWidth={2}
                 />
-              )}
-              {screenTitles.map((screenTitle, idx) =>
-                !hiddenKeys.has(screenTitle) ? (
-                  <Line
-                    key={screenTitle}
-                    yAxisId="price"
-                    type="monotone"
-                    dataKey={screenTitle}
-                    stroke={SCREEN_COLORS[idx % SCREEN_COLORS.length]}
-                    dot={false}
-                    strokeWidth={2}
-                  />
-                ) : null
-              )}
+              ))}
             </>
           ) : (
             <Bar
@@ -322,7 +313,7 @@ function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight
             dataKey="volume"
             fill="#64748b"
             barSize={20}
-            opacity={hiddenKeys.has('volume') ? 0 : 0.35}
+            opacity={0.35}
             legendType="none"
           />
         </ComposedChart>
@@ -354,23 +345,10 @@ function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight
 }
 
 const DEFAULT_CHART_HEIGHT = 320;
-const MAX_CHART_HEIGHT_VH = 60;
 
 export default function VizChart({ visualization, onSave, height = DEFAULT_CHART_HEIGHT }) {
-  const [hiddenKeys, setHiddenKeys] = useState(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenHeight, setFullscreenHeight] = useState(600);
-  const [chartHeight, setChartHeight] = useState(height);
-
-  useEffect(() => {
-    const updateHeight = () => {
-      const vhLimit = Math.round(window.innerHeight * (MAX_CHART_HEIGHT_VH / 100));
-      setChartHeight(Math.min(height, Math.max(200 + 4, vhLimit)));
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, [height]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -385,7 +363,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
     if (!isFullscreen) return;
     const updateHeight = () => {
       const reserved = 116;
-      setFullscreenHeight(Math.max(224, Math.round(window.innerHeight - reserved)));
+      setFullscreenHeight(Math.max(200 + BRUSH_HEIGHT, Math.round(window.innerHeight - reserved)));
     };
     updateHeight();
     window.addEventListener('resize', updateHeight);
@@ -425,7 +403,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   if (!visualization || !chartData.length) {
     return (
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 text-xs text-gray-400">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 m-4 text-xs text-gray-400">
         No visualization data available.
       </div>
     );
@@ -433,7 +411,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   return (
     <>
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 overflow-hidden">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 m-4 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-gray-200 font-semibold">{title}</span>
@@ -467,18 +445,19 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
             )}
           </div>
         </div>
-        <ChartBody
-          chartData={chartData}
-          hiddenKeys={hiddenKeys}
-          chartType={chartType}
-          screenTitles={screenTitles}
-          chartHeight={chartHeight}
-        />
+        <div className="h-full min-h-[204px]" style={{ height: height ?? DEFAULT_CHART_HEIGHT }}>
+          <ChartBody
+            chartData={chartData}
+            chartType={chartType}
+            screenTitles={screenTitles}
+            chartHeight={height ?? DEFAULT_CHART_HEIGHT}
+          />
+        </div>
       </div>
       {isFullscreen &&
         createPortal(
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+            className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/80"
             role="dialog"
             aria-modal="true"
             aria-label="Chart fullscreen"
@@ -487,7 +466,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
             }}
           >
             <div
-              className="bg-surface-elevated border border-divider rounded-xl p-4 w-full max-w-[100%] overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
+              className="bg-surface-elevated border border-divider rounded-xl p-4 m-4 w-full max-w-[100%] overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 text-s text-gray-400 mb-3">
@@ -510,13 +489,14 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
                   <span>Close</span>
                 </button>
               </div>
-              <ChartBody
-                chartData={chartData}
-                hiddenKeys={hiddenKeys}
-                chartType={chartType}
-                screenTitles={screenTitles}
-                chartHeight={fullscreenHeight}
-              />
+              <div className="flex-1 min-h-0 flex flex-col">
+                <ChartBody
+                  chartData={chartData}
+                  chartType={chartType}
+                  screenTitles={screenTitles}
+                  chartHeight={fullscreenHeight ?? DEFAULT_CHART_HEIGHT}
+                />
+              </div>
             </div>
           </div>,
           document.body
