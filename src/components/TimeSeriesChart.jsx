@@ -28,6 +28,14 @@ const formatTimeOnly = (value) => {
   return parts[1] || label;
 };
 
+function formatVolumeAxis(value) {
+  if (value == null || Number.isNaN(Number(value))) return '';
+  const num = Number(value);
+  if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(0) + 'K';
+  return String(Math.round(num));
+}
+
 const CANDLE_UP = '#22c55e';
 const CANDLE_DOWN = '#ef4444';
 
@@ -111,6 +119,13 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
     );
   }
 
+  const closeStrokeColor =
+    chartType === 'simple' && chartData.length >= 2
+      ? (chartData[chartData.length - 1].close ?? 0) >= (chartData[0].close ?? 0)
+        ? CANDLE_UP
+        : CANDLE_DOWN
+      : '#fbbf24';
+
   return (
     <div className="bg-surface-elevated border border-divider rounded-xl p-4">
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 mb-3">
@@ -151,6 +166,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
               tickLine={false}
               axisLine={false}
               width={40}
+              tickFormatter={formatVolumeAxis}
             />
             <Tooltip
               labelFormatter={formatTimestampLabel}
@@ -163,7 +179,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
             {chartType === 'simple' ? (
               <>
                 {!hiddenKeys.has('close') && (
-                  <Line yAxisId="price" type="monotone" dataKey="close" stroke="#fbbf24" dot={false} />
+                  <Line yAxisId="price" type="monotone" dataKey="close" stroke={closeStrokeColor} dot={false} />
                 )}
               </>
             ) : (

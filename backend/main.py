@@ -28,6 +28,7 @@ from models import (
     OpenAIKeyResponse,
     AlphaVantageKeyRequest,
     AlphaVantageKeyResponse,
+    AlphaVantageKeyTypeRequest,
     ChartSaveRequest,
 )
 from memory import (
@@ -590,9 +591,11 @@ async def clear_openai_api_key(request: Request) -> OpenAIKeyResponse:
 async def get_alpha_vantage_api_key_status() -> AlphaVantageKeyResponse:
     repo = SettingsRepository()
     api_key = repo.get_alpha_vantage_api_key()
+    key_type = repo.get_alpha_vantage_key_type()
     return AlphaVantageKeyResponse(
         has_key=bool(api_key),
         masked_key=_mask_api_key(api_key) if api_key else None,
+        key_type=key_type,
     )
 
 
@@ -613,9 +616,11 @@ async def update_alpha_vantage_api_key(
             openai_api_key=None,
             alpha_vantage_api_key=api_key,
         )
+    key_type = repo.get_alpha_vantage_key_type()
     return AlphaVantageKeyResponse(
         has_key=True,
         masked_key=_mask_api_key(api_key),
+        key_type=key_type,
     )
 
 
@@ -632,9 +637,25 @@ async def clear_alpha_vantage_api_key(request: Request) -> AlphaVantageKeyRespon
             openai_api_key=None,
             alpha_vantage_api_key=None,
         )
+    key_type = repo.get_alpha_vantage_key_type()
     return AlphaVantageKeyResponse(
         has_key=False,
         masked_key=None,
+        key_type=key_type,
+    )
+
+
+@app.put("/settings/alpha-vantage-key-type", response_model=AlphaVantageKeyResponse)
+async def update_alpha_vantage_key_type(
+        req: AlphaVantageKeyTypeRequest,
+    ) -> AlphaVantageKeyResponse:
+    repo = SettingsRepository()
+    repo.set_alpha_vantage_key_type(req.key_type)
+    api_key = repo.get_alpha_vantage_api_key()
+    return AlphaVantageKeyResponse(
+        has_key=bool(api_key),
+        masked_key=_mask_api_key(api_key) if api_key else None,
+        key_type=req.key_type,
     )
 
 

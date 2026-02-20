@@ -91,9 +91,6 @@ def build_visualization(tool_output: dict) -> Optional[dict]:
     if not isinstance(tool_output, dict):
         return None
 
-    if not tool_output.get("viz"):
-        return None
-
     ts_data = tool_output.get("timeseries_data") or tool_output.get("data")
     if not ts_data or not isinstance(ts_data, dict):
         return None

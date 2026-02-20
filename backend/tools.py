@@ -67,7 +67,7 @@ async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
         ts_key = "Monthly Time Series"
         interval = "monthly"
 
-    data = get_data(url)
+    data = await get_data(url)
 
     result = {
         "metadata": data.get("Meta Data"),
@@ -115,7 +115,7 @@ async def get_screen_data(
     """
     if s[0] == 'ema':
         url = URLS["ema"].format(ticker=ticker, interval=interval, i=s[1], key=key)
-        data = get_data(url)
+        data = await get_data(url)
         if "Technical Analysis: EMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
             raise ValueError(error_msg)
@@ -127,7 +127,9 @@ async def get_screen_data(
 
     if s[0] == 'sma':
         url = URLS["sma"].format(ticker=ticker, interval=interval, i=s[1], key=key)
-        data = requests.get(url).json()
+        print(url)
+        data = await get_data(url)
+        print(data)
         if "Technical Analysis: SMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
             raise ValueError(error_msg)
@@ -139,7 +141,7 @@ async def get_screen_data(
 
     if s[0] == 'wma':
         url = URLS["wma"].format(ticker=ticker, interval=interval, i=s[1], key=key)
-        data = requests.get(url).json()
+        data = await get_data(url)
         if "Technical Analysis: WMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
             raise ValueError(error_msg)
@@ -170,7 +172,7 @@ async def quote(
         "follow_up": True
     }
 
-    data = get_data(url)
+    data = await get_data(url)
     
     result["metadata"] = {
         "ticker": data["Global Quote"]["01. symbol"],
@@ -207,7 +209,7 @@ async def search(
         "metadata": None,
     }
 
-    data = get_data(url)
+    data = await get_data(url)
     result["metadata"] = data["Meta Data"]
     
     return result
@@ -222,13 +224,13 @@ async def time_series_daily(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get daily time series data/chart of the global equity specified.
+    Get past 100 days of daily time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_periods (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
     url = URLS["time_series_daily"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
 
@@ -237,17 +239,19 @@ async def time_series_daily(
         "follow_up": False
     }
 
-    data = get_data(url)
+    data = await get_data(url)
 
-    if data['Information'].startswith("We have detected your API key as"):
+    if data.get('Information', "").startswith("We have detected your API key as"):
         result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
     result["metadata"] = data["Meta Data"]
+    result["timeseries_data"] = data["Time Series (Daily)"]
     
-    if screens and time_periods:
-        result["screen_data"] = []
-        for s in zip(screens, time_periods):
-            d = await get_screen_data(s, "daily", wrapper.context.alpha_vantage_key, ticker)
-            result["screen_data"].append(d)
+    if wrapper.context.key_type == "premium":
+        if screens and time_periods:
+            result["screen_data"] = []
+            for s in zip(screens, time_periods):
+                d = await get_screen_data(s, "daily", wrapper.context.alpha_vantage_key, ticker)
+                result["screen_data"].append(d)
 
     result["call"] = {
         "func": "time_series_daily",
@@ -260,6 +264,7 @@ async def time_series_daily(
     viz_obj = build_visualization(result)
     if viz_obj is not None:
         result["visualization"] = viz_obj
+        del result["timeseries_data"]
 
     return result
 
@@ -273,13 +278,13 @@ async def time_series_weekly(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get weekly time series data/chart of the global equity specified.
+    Get past 100 weeks of weekly time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_periods (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
     url = URLS["time_series_weekly"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
 
@@ -288,17 +293,19 @@ async def time_series_weekly(
         "follow_up": False
     }
 
-    data = get_data(url)
+    data = await get_data(url)
 
-    if data['Information'].startswith("We have detected your API key as"):
+    if data.get('Information', "").startswith("We have detected your API key as"):
         result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
     result["metadata"] = data["Meta Data"]
+    result["timeseries_data"] = data["Weekly Time Series"]
     
-    if screens and time_periods:
-        result["screen_data"] = []
-        for s in zip(screens, time_periods):
-            d = await get_screen_data(s, "weekly", wrapper.context.alpha_vantage_key, ticker)
-            result["screen_data"].append(d)
+    if wrapper.context.key_type == "premium":
+        if screens and time_periods:
+            result["screen_data"] = []
+            for s in zip(screens, time_periods):
+                d = await get_screen_data(s, "weekly", wrapper.context.alpha_vantage_key, ticker)
+                result["screen_data"].append(d)
 
     result["call"] = {
         "func": "time_series_weekly",
@@ -311,6 +318,7 @@ async def time_series_weekly(
     viz_obj = build_visualization(result)
     if viz_obj is not None:
         result["visualization"] = viz_obj
+        del result["timeseries_data"]
 
     return result
 
@@ -324,13 +332,13 @@ async def time_series_monthly(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get monthly time series data/chart of the global equity specified.
+    Get past 100 months of monthly time series data/chart of the global equity specified.
 
     Args:
         ticker (str): Stock ticker.
         chart_type (str): "simple" for line chart of close prices, "candlestick" for OHLC candlestick chart.
         screens (List[str]): Optional screens to add to a visualization
-        time_periods (List[int]): Time period for each screen added
+        time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
     url = URLS["time_series_monthly"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
 
@@ -339,17 +347,20 @@ async def time_series_monthly(
         "follow_up": False
     }
 
-    data = get_data(url)
+    data = await get_data(url)
 
-    if data['Information'].startswith("We have detected your API key as"):
+    if data.get('Information', "").startswith("We have detected your API key as"):
         result = {"warning": "Your Alpha Vantage API key has met its daily rate limit."}
-    result["metadata"] = data["Meta Data"]
     
-    if screens and time_periods:
-        result["screen_data"] = []
-        for s in zip(screens, time_periods):
-            d = await get_screen_data(s, "monthly", wrapper.context.alpha_vantage_key, ticker)
-            result["screen_data"].append(d)
+    result["metadata"] = data["Meta Data"]
+    result["timeseries_data"] = data["Monthly Time Series"]
+    
+    if wrapper.context.key_type == "premium":
+        if screens and time_periods:
+            result["screen_data"] = []
+            for s in zip(screens, time_periods):
+                d = await get_screen_data(s, "monthly", wrapper.context.alpha_vantage_key, ticker)
+                result["screen_data"].append(d)
 
     result["call"] = {
         "func": "time_series_monthly",
@@ -362,6 +373,7 @@ async def time_series_monthly(
     viz_obj = build_visualization(result)
     if viz_obj is not None:
         result["visualization"] = viz_obj
+        del result["timeseries_data"]
 
     print(result)
 

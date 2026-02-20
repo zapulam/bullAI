@@ -79,6 +79,14 @@ function formatVolume(n) {
   return String(Math.round(num));
 }
 
+function formatVolumeAxis(value) {
+  if (value == null || Number.isNaN(Number(value))) return '';
+  const num = Number(value);
+  if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(0) + 'K';
+  return String(Math.round(num));
+}
+
 function formatPrice(v) {
   if (v == null || Number.isNaN(Number(v))) return '-';
   return Number(v).toFixed(2);
@@ -130,6 +138,13 @@ function ChartTooltip({ active, payload, label, screenTitles = [] }) {
 }
 
 function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screenTitles, chartHeight }) {
+  const closeStrokeColor =
+    chartType === 'simple' && chartData.length >= 2
+      ? (chartData[chartData.length - 1].close ?? 0) >= (chartData[0].close ?? 0)
+        ? CANDLE_UP
+        : CANDLE_DOWN
+      : '#fbbf24';
+
   return (
     <div
       className="viz-chart"
@@ -164,6 +179,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
             tickLine={false}
             axisLine={false}
             width={40}
+            tickFormatter={formatVolumeAxis}
           />
           <Tooltip
             content={(props) => <ChartTooltip {...props} screenTitles={screenTitles} />}
@@ -177,7 +193,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
                   yAxisId="price"
                   type="monotone"
                   dataKey="close"
-                  stroke="#fbbf24"
+                  stroke={closeStrokeColor}
                   dot={false}
                 />
               )}

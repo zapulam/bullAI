@@ -16,18 +16,20 @@ from agents import (
     RunContextWrapper,
     ToolsToFinalOutputFunction,
     ToolsToFinalOutputResult,
-    WebSearchTool
+    WebSearchTool,
 )
+from agents.items import TResponseInputItem
+from agents.run import ModelInputData
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from agents.mcp import MCPServerStdio, create_static_tool_filter
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool import HostedMCPTool, FunctionToolResult
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from openai import AsyncOpenAI
 from openai.types.responses.web_search_tool import Filters
 from openai.types.shared import Reasoning
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, List, Optional
 
 from prompts import *
 from models import ChatContext, Output
@@ -39,6 +41,27 @@ from memory import (
 )
 from repositories import SettingsRepository
 from streaming import stream_result_events
+
+
+def _make_memories_input_filter(memories_block: str):
+    """Create a call_model_input_filter that adds memories as a system message before user input, only at the start of the turn."""
+    has_added = [False]
+
+    def _filter(payload):
+        if not memories_block or has_added[0]:
+            return payload.model_data
+        has_added[0] = True
+        memories_message: TResponseInputItem = {
+            "role": "system",
+            "content": memories_block,
+        }
+        new_input = [memories_message] + list(payload.model_data.input)
+        return ModelInputData(
+            input=new_input,
+            instructions=payload.model_data.instructions,
+        )
+
+    return _filter
 
 
 def tool_handler(
@@ -83,6 +106,37 @@ class ChatService:
             time_series_weekly,
             time_series_monthly
         ]
+
+        self.premium_tools = []  # TODO
+
+        base_instructions = f"{RECOMMENDED_PROMPT_PREFIX}\n{TRIAGE_PROMPT}"
+        model_settings = ModelSettings(
+            reasoning=Reasoning(effort="medium"),
+            verbosity="medium",
+            parallel_tool_calls=True,
+            store=False,
+            response_include=["reasoning.encrypted_content"],
+        )
+
+        self.triage = Agent(
+            name="Triage agent",
+            instructions=base_instructions,
+            tools=self.base_tools,
+            output_type=Output,
+            model=self.model,
+            model_settings=model_settings,
+            tool_use_behavior=tool_handler,
+        )
+
+        self.premium = Agent(
+            name="Premium agent",
+            instructions=base_instructions,
+            tools=self.premium_tools,
+            output_type=Output,
+            model=self.model,
+            model_settings=model_settings,
+            tool_use_behavior=tool_handler,
+        )
 
 
     async def generate_summary(
@@ -141,47 +195,35 @@ class ChatService:
             dict: Streaming chunks with 'type' and 'content' keys.
         """
         provider = OpenAIProvider(openai_client=self.openai_client)
-
         settings_repo = SettingsRepository()
+
         memory_content = settings_repo.get_user_memory()
         memories_block = ""
         if memory_content and memory_content.strip():
             memories_block = "\n\n## User Memories\n" + memory_content.strip()
 
-        triage = Agent(
-            name="Triage agent",
-            instructions=f"""{RECOMMENDED_PROMPT_PREFIX}\n{TRIAGE_PROMPT}\n{memories_block}""",
-            tools=self.base_tools,
-            output_type=Output,
-            model=self.model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="medium"),
-                verbosity="medium",
-                parallel_tool_calls=True,
-                store=False,
-                response_include=["reasoning.encrypted_content"]
-            ),
-            tool_use_behavior=tool_handler
-        )
-        
-        # Load session
+        session_cb = _make_memories_input_filter(memories_block)
+        key_type = settings_repo.get_alpha_vantage_key_type()
+        starting_agent = self.premium if key_type == "premium" else self.triage
+
         session = await create_session_and_load_state(
             conversation_id=conversation_id
         )
 
         try:
-            # Run with streaming and yield chunks as they come
             result = Runner.run_streamed(
-                starting_agent=triage,
+                starting_agent=starting_agent,
                 input=user_input,
                 session=session,
                 max_turns=20,
                 context=ChatContext(
-                    alpha_vantage_key=self.alpha_vantage_key
+                    alpha_vantage_key=self.alpha_vantage_key,
+                    key_type=key_type
                 ),
                 run_config=RunConfig(
                     model_provider=provider,
-                    tracing_disabled=True
+                    tracing_disabled=True,
+                    call_model_input_filter=session_cb,
                 )
             )
 

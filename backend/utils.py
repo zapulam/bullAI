@@ -27,6 +27,6 @@ async def get_data(
         raise ValueError("Alpha Vantage's API request timed out.")
     except requests.exceptions.Timeout:
         raise ValueError("Alpha Vantage's API request timed out.")
-    if data['Information'].startswith("We have detected your API key as"):
+    if data.get('Information', "").startswith("We have detected your API key as"):
         raise RateLimitExceededError("Your Alpha Vantage API key has met its daily rate limit.")
     return data

@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
   SETTINGS_MEMORIES: 'settings/memories',
   SETTINGS_OPENAI_API_KEY: 'settings/openai-api-key',
   SETTINGS_ALPHA_VANTAGE_API_KEY: 'settings/alpha-vantage-api-key',
+  SETTINGS_ALPHA_VANTAGE_KEY_TYPE: 'settings/alpha-vantage-key-type',
 };
 
 export const apiCall = async (endpoint, options = {}) => {

@@ -11,6 +11,7 @@ from typing import Optional, Any, Literal, List
 # Chat Context
 class ChatContext(BaseModel):
     alpha_vantage_key: str
+    key_type: str = "free"
 
 
 # Structured output for bullAI triage agent
@@ -65,9 +66,14 @@ class AlphaVantageKeyRequest(BaseModel):
     api_key: str = Field(min_length=1)
 
 
+class AlphaVantageKeyTypeRequest(BaseModel):
+    key_type: Literal["free", "premium"]
+
+
 class AlphaVantageKeyResponse(BaseModel):
     has_key: bool
     masked_key: Optional[str] = None
+    key_type: Literal["free", "premium"] = "free"
 
 
 # Time series models

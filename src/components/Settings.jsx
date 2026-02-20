@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { HelpCircle } from 'lucide-react';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
+
+function HelpBubble({ content, label }) {
+  return (
+    <span className="group relative inline-flex align-middle ml-1.5">
+      <HelpCircle
+        className="w-4 h-4 text-gray-500 hover:text-gray-400 cursor-help shrink-0"
+        aria-label={label}
+      />
+      <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-10 px-3 py-2 w-72 max-w-[calc(100vw-4rem)] text-xs text-gray-200 bg-surface-elevated border border-divider rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-150">
+        {content}
+      </span>
+    </span>
+  );
+}
 
 export default function Settings() {
   const [openaiKey, setOpenaiKey] = useState('');
@@ -12,7 +27,9 @@ export default function Settings() {
   const [alphaVantageKeyStatus, setAlphaVantageKeyStatus] = useState({
     hasKey: false,
     maskedKey: null,
+    keyType: 'free',
   });
+  const [alphaVantageKeyTypeSaving, setAlphaVantageKeyTypeSaving] = useState(false);
   const [alphaVantageKeyLoading, setAlphaVantageKeyLoading] = useState(false);
   const [alphaVantageKeySaving, setAlphaVantageKeySaving] = useState(false);
   const [alphaVantageKeyClearing, setAlphaVantageKeyClearing] = useState(false);
@@ -58,6 +75,7 @@ export default function Settings() {
         setAlphaVantageKeyStatus({
           hasKey: Boolean(data.has_key),
           maskedKey: data.masked_key || null,
+          keyType: data.key_type || 'free',
         });
       } catch (err) {
         setAlphaVantageKeyError(err.message);
@@ -162,6 +180,7 @@ export default function Settings() {
       setAlphaVantageKeyStatus({
         hasKey: Boolean(data.has_key),
         maskedKey: data.masked_key || null,
+        keyType: data.key_type || 'free',
       });
       setAlphaVantageKey('');
     } catch (err) {
@@ -184,12 +203,39 @@ export default function Settings() {
       setAlphaVantageKeyStatus({
         hasKey: Boolean(data.has_key),
         maskedKey: data.masked_key || null,
+        keyType: data.key_type || 'free',
       });
       setAlphaVantageKey('');
     } catch (err) {
       setAlphaVantageKeyError(err.message);
     } finally {
       setAlphaVantageKeyClearing(false);
+    }
+  };
+
+  const handleToggleAlphaVantageKeyType = async () => {
+    const newKeyType = alphaVantageKeyStatus.keyType === 'premium' ? 'free' : 'premium';
+    setAlphaVantageKeyTypeSaving(true);
+    setAlphaVantageKeyError(null);
+    try {
+      const url = buildApiUrl(API_ENDPOINTS.SETTINGS_ALPHA_VANTAGE_KEY_TYPE);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key_type: newKeyType }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update key type: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setAlphaVantageKeyStatus((prev) => ({
+        ...prev,
+        keyType: data.key_type || newKeyType,
+      }));
+    } catch (err) {
+      setAlphaVantageKeyError(err.message);
+    } finally {
+      setAlphaVantageKeyTypeSaving(false);
     }
   };
 
@@ -224,7 +270,13 @@ export default function Settings() {
                   </p>
             <div className="space-y-6">
               <div className="space-y-3 pb-6 border-b border-divider">
-                <h3 className="text-sm font-medium text-white">OpenAI API Key</h3>
+                <h3 className="text-sm font-medium text-white inline-flex items-center">
+                  OpenAI API Key
+                  <HelpBubble
+                    label="OpenAI API key help"
+                    content="Get your API key at platform.openai.com/api-keys. Sign in or create an OpenAI account, then create a new secret key. Your key is stored locally and never sent to third parties."
+                  />
+                </h3>
                 <p className="text-xs text-gray-400">Add your OpenAI API key to enable chat features.</p>
                 {openaiKeyLoading ? (
                   <p className="text-sm text-gray-500 italic">Loading OpenAI key status...</p>
@@ -258,21 +310,54 @@ export default function Settings() {
                 </div>
               </div>
               <div className="space-y-3">
-                <h3 className="text-sm font-medium text-white">Alpha Vantage API Key</h3>
+                <h3 className="text-sm font-medium text-white inline-flex items-center">
+                  Alpha Vantage API Key
+                  <HelpBubble
+                    label="Alpha Vantage API key help"
+                    content="Get your API key at alphavantage.co. A free tier is available or you can upgrade to the premium tier. When the Premium toggle is on here, 
+                    the chat uses the premium agent with premium-tier API access (higher rate limits and additional endpoints) instead of the standard free agent. 
+                    If you have premium toggled on here and do not actually have a premium Alpha Vantage account, you will experience errors."
+                  />
+                </h3>
                 <p className="text-xs text-gray-400">Add your Alpha Vantage API key to enable market data tools.</p>
                 {alphaVantageKeyLoading ? (
                   <p className="text-sm text-gray-500 italic">Loading Alpha Vantage key status...</p>
                 ) : null}
                 {alphaVantageKeyError ? <p className="text-sm text-red-400">{alphaVantageKeyError}</p> : null}
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
-                  placeholder={
-                    alphaVantageKeyStatus.maskedKey || 'Enter Alpha Vantage API key'
-                  }
-                  value={alphaVantageKey}
-                  onChange={(e) => setAlphaVantageKey(e.target.value)}
-                />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                  <input
+                    type="text"
+                    className="flex-1 min-w-0 px-3 py-2 bg-surface border border-divider rounded-lg text-white text-sm"
+                    placeholder={
+                      alphaVantageKeyStatus.maskedKey || 'Enter Alpha Vantage API key'
+                    }
+                    value={alphaVantageKey}
+                    onChange={(e) => setAlphaVantageKey(e.target.value)}
+                  />
+                  <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+                    <span className="text-sm text-gray-400">Premium API</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={alphaVantageKeyStatus.keyType === 'premium'}
+                      disabled={alphaVantageKeyTypeSaving}
+                      onClick={handleToggleAlphaVantageKeyType}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50 ${
+                        alphaVantageKeyStatus.keyType === 'premium'
+                          ? 'bg-green-600'
+                          : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                          alphaVantageKeyStatus.keyType === 'premium'
+                            ? 'translate-x-5'
+                            : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </label>
+                </div>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
                   <button
                     onClick={handleSaveAlphaVantageKey}
