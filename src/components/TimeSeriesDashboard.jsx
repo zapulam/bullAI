@@ -118,7 +118,7 @@ export default function TimeSeriesDashboard() {
               No saved charts yet. Run a time-series tool with visualization in chat, then use Save to add charts here.
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-3">
+            <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-4">
               {charts.map((chart) => {
                 const viz = {
                   title: chart.title,

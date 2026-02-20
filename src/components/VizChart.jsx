@@ -403,7 +403,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   if (!visualization || !chartData.length) {
     return (
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 m-4 text-xs text-gray-400">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 text-xs text-gray-400">
         No visualization data available.
       </div>
     );
@@ -411,7 +411,7 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   return (
     <>
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 m-4 overflow-hidden">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 pb-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-gray-200 font-semibold">{title}</span>
