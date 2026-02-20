@@ -21,6 +21,12 @@ class RateLimitExceededError(Exception):
 def build_url(params: dict) -> str:
     """
     Build Alpha Vantage URL from params dict, filtering None and empty values.
+
+    Args:
+        params (dict): API params.
+
+    Returns:
+        str: Formatted URL. 
     """
     params = {k: v for k, v in params.items() if v not in (None, "")}
     return BASE + urlencode(params)
@@ -30,7 +36,13 @@ async def get_data(
         url: str
     ) -> dict[str, Any]:
     """
+    Get data from Alpha Vantage.
 
+    Args:
+        url (str): Alpha Vantage URL.
+
+    Returns:
+        dict: Alpha Vantage API data.
     """
     try:
         data = requests.get(url, timeout=10).json()
