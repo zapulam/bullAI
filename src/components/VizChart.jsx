@@ -422,27 +422,25 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
             )}
             {meta?.timeZone && <span>Time zone: {meta.timeZone}</span>}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
-              title="Expand to fullscreen"
-            >
-              <Maximize2 className="w-4 h-4" />
-              <span>Expand</span>
-            </button>
+          <div className="flex items-center gap-1">
             {onSave && Object.keys(call).length > 0 && (
               <button
                 type="button"
                 onClick={handleSave}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1 px-2 py-2 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
                 title="Save chart to Charts page"
               >
                 <Save className="w-4 h-4" />
-                <span>Save</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(true)}
+              className="flex items-center gap-1 px-2 py-2 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+              title="Expand to fullscreen"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
         <div className="h-full min-h-[204px]" style={{ height: height ?? DEFAULT_CHART_HEIGHT }}>
@@ -482,11 +480,10 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+                  className="flex items-center gap-2 px-2 py-2 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
                   aria-label="Close fullscreen"
                 >
                   <X className="w-4 h-4" />
-                  <span>Close</span>
                 </button>
               </div>
               <div className="flex-1 min-h-0 flex flex-col">

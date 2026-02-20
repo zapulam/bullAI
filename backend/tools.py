@@ -287,7 +287,7 @@ async def time_series_daily(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get past 100 days of daily time series data/chart of the global equity specified.
+    Get past 100 days of daily time series data + chart of the global equity specified. Returns chart to the user and data to you.
 
     Args:
         ticker (str): Stock ticker.
@@ -345,7 +345,7 @@ async def time_series_weekly(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get past 100 weeks of weekly time series data/chart of the global equity specified.
+    Get past 100 weeks of weekly time series data + chart of the global equity specified. Returns chart to the user and data to you.
 
     Args:
         ticker (str): Stock ticker.
@@ -403,7 +403,7 @@ async def time_series_monthly(
         time_periods: Optional[List[int]] = None
     ) -> dict[str, Any]:
     """
-    Get past 100 months of monthly time series data/chart of the global equity specified.
+    Get past 100 months of monthly time series data + chart of the global equity specified. Returns chart to the user and data to you.
 
     Args:
         ticker (str): Stock ticker.
