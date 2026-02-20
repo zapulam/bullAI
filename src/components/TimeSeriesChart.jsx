@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -36,8 +36,52 @@ function formatVolumeAxis(value) {
   return String(Math.round(num));
 }
 
+function formatPriceAxis(value, inPennies) {
+  if (value == null || Number.isNaN(Number(value))) return '';
+  const num = Number(value);
+  return inPennies ? num.toFixed(2) : String(Math.round(num));
+}
+
 const CANDLE_UP = '#22c55e';
 const CANDLE_DOWN = '#ef4444';
+const BRUSH_HEIGHT = 24;
+
+function niceDomain(min, max, padding = 0.02) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 100];
+  const range = Math.max(max - min, 0.01);
+  const pad = Math.max(range * padding, 0.01);
+  let lo = min - pad;
+  let hi = max + pad;
+  if (hi < 1) {
+    return [Math.max(0, Math.floor(lo * 100) / 100), Math.ceil(hi * 100) / 100];
+  }
+  const rawRange = hi - lo;
+  const exp = Math.floor(Math.log10(rawRange));
+  const frac = rawRange / Math.pow(10, exp);
+  const step = (frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10) * Math.pow(10, exp);
+  const niceMin = Math.floor(lo / step) * step;
+  const niceMax = Math.ceil(hi / step) * step;
+  return [niceMin, niceMax];
+}
+
+function getPriceDomain(chartData, padding = 0.02) {
+  let min = Infinity;
+  let max = -Infinity;
+  const ohlcKeys = ['open', 'high', 'low', 'close'];
+  for (const p of chartData) {
+    for (const k of ohlcKeys) {
+      const v = p[k];
+      if (v == null) continue;
+      const num = Number(v);
+      if (!Number.isNaN(num)) {
+        min = Math.min(min, num);
+        max = Math.max(max, num);
+      }
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 100];
+  return niceDomain(min, max, padding);
+}
 
 function CandlestickShape(props) {
   const { x, width, payload, yAxisId } = props;
@@ -89,6 +133,25 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
     }));
   }, [series?.points]);
 
+  const n = chartData.length;
+  const defaultStart = 0;
+  const defaultEnd = Math.max(0, n - 1);
+  const [brushRange, setBrushRange] = useState({ startIndex: defaultStart, endIndex: defaultEnd });
+
+  useEffect(() => {
+    const len = chartData.length;
+    setBrushRange({
+      startIndex: 0,
+      endIndex: Math.max(0, len - 1),
+    });
+  }, [chartData]);
+
+  const visibleData = useMemo(() => {
+    const { startIndex, endIndex } = brushRange;
+    if (startIndex == null || endIndex == null || endIndex < startIndex) return chartData;
+    return chartData.slice(startIndex, endIndex + 1);
+  }, [chartData, brushRange]);
+
   const handleLegendClick = (payload) => {
     const key = payload?.dataKey;
     if (!key) return;
@@ -101,6 +164,12 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
       }
       return next;
     });
+  };
+
+  const handleBrushChange = (range) => {
+    if (range?.startIndex != null && range?.endIndex != null) {
+      setBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    }
   };
 
   if (!series) {
@@ -119,12 +188,15 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
     );
   }
 
+  const priceDomain = useMemo(() => getPriceDomain(visibleData, 0.02), [visibleData]);
   const closeStrokeColor =
-    chartType === 'simple' && chartData.length >= 2
-      ? (chartData[chartData.length - 1].close ?? 0) >= (chartData[0].close ?? 0)
+    chartType === 'simple' && visibleData.length >= 2
+      ? (visibleData[visibleData.length - 1].close ?? 0) >= (visibleData[0].close ?? 0)
         ? CANDLE_UP
         : CANDLE_DOWN
       : '#fbbf24';
+
+  const mainHeight = Math.max(200, height - BRUSH_HEIGHT);
 
   return (
     <div className="bg-surface-elevated border border-divider rounded-xl p-4">
@@ -142,9 +214,12 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
           <span>Time zone: {series.meta.timeZone}</span>
         )}
       </div>
-      <div style={{ width: '100%', height }}>
-        <ResponsiveContainer>
-          <ComposedChart data={chartData} margin={{ top: 10, right: 24, left: 0, bottom: 10 }}>
+      <div style={{ width: '100%', height, display: 'flex', flexDirection: 'column' }}>
+        <ResponsiveContainer width="100%" height={mainHeight} minHeight={200} style={{ flexShrink: 0 }}>
+          <ComposedChart
+            data={visibleData}
+            margin={{ top: 10, right: 24, left: 48, bottom: 10 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
             <XAxis
               dataKey="timestamp"
@@ -154,6 +229,10 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
             />
             <YAxis
               yAxisId="price"
+              domain={priceDomain}
+              allowDataOverflow={false}
+              allowDecimals={priceDomain[0] < 1}
+              tickFormatter={(v) => formatPriceAxis(v, priceDomain[0] < 1)}
               stroke="#9ca3af"
               tickLine={false}
               axisLine={false}
@@ -162,6 +241,7 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
             <YAxis
               yAxisId="volume"
               orientation="right"
+              domain={[0, 'auto']}
               stroke="#6b7280"
               tickLine={false}
               axisLine={false}
@@ -175,11 +255,10 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
               itemStyle={{ color: '#e5e7eb' }}
               labelStyle={{ color: '#e5e7eb' }}
             />
-            <Legend onClick={handleLegendClick} />
             {chartType === 'simple' ? (
               <>
                 {!hiddenKeys.has('close') && (
-                  <Line yAxisId="price" type="monotone" dataKey="close" stroke={closeStrokeColor} dot={false} />
+                  <Line yAxisId="price" type="monotone" dataKey="close" stroke={closeStrokeColor} dot={false} legendType="none" />
                 )}
               </>
             ) : (
@@ -189,12 +268,34 @@ export default function TimeSeriesChart({ series, height = 320, chartType = 'sim
                 fill="transparent"
                 barSize={20}
                 shape={<CandlestickShape yAxisId="price" />}
+                legendType="none"
               />
             )}
             {!hiddenKeys.has('volume') && (
-              <Bar yAxisId="volume" dataKey="volume" fill="#64748b" barSize={20} opacity={0.5} />
+              <Bar yAxisId="volume" dataKey="volume" fill="#64748b" barSize={20} opacity={0.5} legendType="none" />
             )}
-            <Brush dataKey="timestamp" height={20} stroke="#22c55e" />
+          </ComposedChart>
+        </ResponsiveContainer>
+        <ResponsiveContainer width="100%" height={BRUSH_HEIGHT} style={{ flexShrink: 0 }}>
+          <ComposedChart
+            data={chartData}
+            margin={{ top: 0, right: 24, left: 48, bottom: 0 }}
+          >
+            <XAxis dataKey="timestamp" hide />
+            <YAxis domain={['auto', 'auto']} hide width={0} />
+            <Line type="monotone" dataKey="close" stroke="#64748b" dot={false} strokeWidth={1} />
+            <Brush
+              dataKey="timestamp"
+              data={chartData}
+              height={BRUSH_HEIGHT}
+              stroke="#22c55e"
+              fill="#1f2937"
+              travellerWidth={28}
+              tickFormatter={() => ''}
+              startIndex={brushRange.startIndex}
+              endIndex={brushRange.endIndex}
+              onChange={handleBrushChange}
+            />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

@@ -92,6 +92,59 @@ function formatPrice(v) {
   return Number(v).toFixed(2);
 }
 
+function formatPriceAxis(value, inPennies) {
+  if (value == null || Number.isNaN(Number(value))) return '';
+  const num = Number(value);
+  return inPennies ? num.toFixed(2) : String(Math.round(num));
+}
+
+function niceDomain(min, max, padding = 0.02) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 100];
+  const range = Math.max(max - min, 0.01);
+  const pad = Math.max(range * padding, 0.01);
+  let lo = min - pad;
+  let hi = max + pad;
+  if (hi < 1) {
+    return [Math.max(0, Math.floor(lo * 100) / 100), Math.ceil(hi * 100) / 100];
+  }
+  const rawRange = hi - lo;
+  const exp = Math.floor(Math.log10(rawRange));
+  const frac = rawRange / Math.pow(10, exp);
+  const step = (frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10) * Math.pow(10, exp);
+  const niceMin = Math.floor(lo / step) * step;
+  const niceMax = Math.ceil(hi / step) * step;
+  return [niceMin, niceMax];
+}
+
+function getPriceDomain(chartData, screenTitles, padding = 0.02) {
+  let min = Infinity;
+  let max = -Infinity;
+  const ohlcKeys = ['open', 'high', 'low', 'close'];
+  const screenKeys = (screenTitles || []).filter((k) => k && String(k).toLowerCase() !== 'volume');
+  for (const p of chartData) {
+    for (const k of ohlcKeys) {
+      const v = p[k];
+      if (v == null) continue;
+      const num = Number(v);
+      if (!Number.isNaN(num)) {
+        min = Math.min(min, num);
+        max = Math.max(max, num);
+      }
+    }
+    for (const k of screenKeys) {
+      const v = p[k];
+      if (v == null) continue;
+      const num = Number(v);
+      if (!Number.isNaN(num) && num < 1e6) {
+        min = Math.min(min, num);
+        max = Math.max(max, num);
+      }
+    }
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 100];
+  return niceDomain(min, max, padding);
+}
+
 function ChartTooltip({ active, payload, label, screenTitles = [] }) {
   if (!active || !payload?.length) return null;
   const p = payload[0]?.payload;
@@ -137,13 +190,46 @@ function ChartTooltip({ active, payload, label, screenTitles = [] }) {
   );
 }
 
-function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screenTitles, chartHeight }) {
+const BRUSH_HEIGHT = 4;
+
+function ChartBody({ chartData, hiddenKeys, chartType, screenTitles, chartHeight }) {
+  const n = chartData.length;
+  const defaultStart = 0;
+  const defaultEnd = Math.max(0, n - 1);
+  const [brushRange, setBrushRange] = useState({ startIndex: defaultStart, endIndex: defaultEnd });
+
+  useEffect(() => {
+    const len = chartData.length;
+    setBrushRange({
+      startIndex: 0,
+      endIndex: Math.max(0, len - 1),
+    });
+  }, [chartData]);
+
+  const visibleData = useMemo(() => {
+    const { startIndex, endIndex } = brushRange;
+    if (startIndex == null || endIndex == null || endIndex < startIndex) return chartData;
+    return chartData.slice(startIndex, endIndex + 1);
+  }, [chartData, brushRange]);
+
+  const priceDomain = useMemo(
+    () => getPriceDomain(visibleData, screenTitles, 0.02),
+    [visibleData, screenTitles]
+  );
   const closeStrokeColor =
-    chartType === 'simple' && chartData.length >= 2
-      ? (chartData[chartData.length - 1].close ?? 0) >= (chartData[0].close ?? 0)
+    chartType === 'simple' && visibleData.length >= 2
+      ? (visibleData[visibleData.length - 1].close ?? 0) >= (visibleData[0].close ?? 0)
         ? CANDLE_UP
         : CANDLE_DOWN
       : '#fbbf24';
+
+  const mainHeight = Math.max(200, chartHeight - BRUSH_HEIGHT);
+
+  const handleBrushChange = (range) => {
+    if (range?.startIndex != null && range?.endIndex != null) {
+      setBrushRange({ startIndex: range.startIndex, endIndex: range.endIndex });
+    }
+  };
 
   return (
     <div
@@ -151,13 +237,18 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
       style={{
         width: '100%',
         height: chartHeight,
-        minHeight: 200,
+        minHeight: 200 + BRUSH_HEIGHT,
+        display: 'flex',
+        flexDirection: 'column',
         userSelect: 'none',
         WebkitUserSelect: 'none',
       }}
     >
-      <ResponsiveContainer width="100%" height={chartHeight} minHeight={200}>
-        <ComposedChart data={chartData} margin={{ top: 10, right: 24, left: 0, bottom: 10 }}>
+      <ResponsiveContainer width="100%" height={mainHeight} minHeight={200} style={{ flexShrink: 0 }}>
+        <ComposedChart
+          data={visibleData}
+          margin={{ top: 10, right: 18, left: 18, bottom: 2 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
           <XAxis
             dataKey="timestamp"
@@ -167,6 +258,10 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
           />
           <YAxis
             yAxisId="price"
+            domain={priceDomain}
+            allowDataOverflow={false}
+            allowDecimals={priceDomain[0] < 1}
+            tickFormatter={(v) => formatPriceAxis(v, priceDomain[0] < 1)}
             stroke="#9ca3af"
             tickLine={false}
             axisLine={false}
@@ -175,6 +270,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
           <YAxis
             yAxisId="volume"
             orientation="right"
+            domain={[0, 'auto']}
             stroke="#6b7280"
             tickLine={false}
             axisLine={false}
@@ -185,7 +281,6 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
             content={(props) => <ChartTooltip {...props} screenTitles={screenTitles} />}
             contentStyle={{ background: 'transparent', border: 'none', padding: 0 }}
           />
-          <Legend onClick={handleLegendClick} wrapperStyle={{ cursor: 'pointer' }} />
           {chartType === 'simple' ? (
             <>
               {!hiddenKeys.has('close') && (
@@ -195,6 +290,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
                   dataKey="close"
                   stroke={closeStrokeColor}
                   dot={false}
+                  legendType="none"
                 />
               )}
               {screenTitles.map((screenTitle, idx) =>
@@ -218,6 +314,7 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
               fill="transparent"
               barSize={20}
               shape={<CandlestickShape yAxisId="price" />}
+              legendType="none"
             />
           )}
           <Bar
@@ -225,14 +322,30 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
             dataKey="volume"
             fill="#64748b"
             barSize={20}
-            opacity={hiddenKeys.has('volume') ? 0 : 0.5}
+            opacity={hiddenKeys.has('volume') ? 0 : 0.35}
+            legendType="none"
           />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <ResponsiveContainer width="100%" height={BRUSH_HEIGHT} style={{ flexShrink: 0 }}>
+        <ComposedChart
+          data={chartData}
+          margin={{ top: 0, right: 24, left: 24, bottom: 0 }}
+        >
+          <XAxis dataKey="timestamp" hide />
+          <YAxis domain={['auto', 'auto']} hide width={0} />
+          <Line type="monotone" dataKey="close" stroke="#64748b" dot={false} strokeWidth={1} />
           <Brush
             dataKey="timestamp"
-            height={6}
+            data={chartData}
+            height={BRUSH_HEIGHT}
             stroke="#22c55e"
             fill="#1f2937"
             travellerWidth={28}
+            tickFormatter={() => ''}
+            startIndex={brushRange.startIndex}
+            endIndex={brushRange.endIndex}
+            onChange={handleBrushChange}
           />
         </ComposedChart>
       </ResponsiveContainer>
@@ -240,10 +353,24 @@ function ChartBody({ chartData, hiddenKeys, handleLegendClick, chartType, screen
   );
 }
 
-export default function VizChart({ visualization, onSave, height = 320 }) {
+const DEFAULT_CHART_HEIGHT = 320;
+const MAX_CHART_HEIGHT_VH = 60;
+
+export default function VizChart({ visualization, onSave, height = DEFAULT_CHART_HEIGHT }) {
   const [hiddenKeys, setHiddenKeys] = useState(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenHeight, setFullscreenHeight] = useState(600);
+  const [chartHeight, setChartHeight] = useState(height);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      const vhLimit = Math.round(window.innerHeight * (MAX_CHART_HEIGHT_VH / 100));
+      setChartHeight(Math.min(height, Math.max(200 + 4, vhLimit)));
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [height]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -256,7 +383,10 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
 
   useLayoutEffect(() => {
     if (!isFullscreen) return;
-    const updateHeight = () => setFullscreenHeight(Math.round(window.innerHeight * 0.9));
+    const updateHeight = () => {
+      const reserved = 116;
+      setFullscreenHeight(Math.max(224, Math.round(window.innerHeight - reserved)));
+    };
     updateHeight();
     window.addEventListener('resize', updateHeight);
     return () => window.removeEventListener('resize', updateHeight);
@@ -277,20 +407,6 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
   const chartType = visualization?.chartType ?? 'simple';
 
   const screenTitles = screens.map((s) => s?.title).filter(Boolean);
-
-  const handleLegendClick = (payload) => {
-    const key = payload?.dataKey;
-    if (!key) return;
-    setHiddenKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
 
   const handleSave = () => {
     if (onSave && visualization) {
@@ -317,7 +433,7 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
 
   return (
     <>
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4">
+      <div className="bg-surface-elevated border border-divider rounded-xl p-4 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-gray-200 font-semibold">{title}</span>
@@ -354,10 +470,9 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
         <ChartBody
           chartData={chartData}
           hiddenKeys={hiddenKeys}
-          handleLegendClick={handleLegendClick}
           chartType={chartType}
           screenTitles={screenTitles}
-          chartHeight={height}
+          chartHeight={chartHeight}
         />
       </div>
       {isFullscreen &&
@@ -372,7 +487,7 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
             }}
           >
             <div
-              className="bg-surface-elevated border border-divider rounded-xl p-4 w-full max-w-[100%]"
+              className="bg-surface-elevated border border-divider rounded-xl p-4 w-full max-w-[100%] overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex flex-wrap items-center justify-between gap-3 text-s text-gray-400 mb-3">
@@ -398,7 +513,6 @@ export default function VizChart({ visualization, onSave, height = 320 }) {
               <ChartBody
                 chartData={chartData}
                 hiddenKeys={hiddenKeys}
-                handleLegendClick={handleLegendClick}
                 chartType={chartType}
                 screenTitles={screenTitles}
                 chartHeight={fullscreenHeight}
