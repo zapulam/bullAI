@@ -8,11 +8,22 @@ import json
 import requests
 
 from typing import Any
+from urllib.parse import urlencode
+
+BASE = "https://www.alphavantage.co/query?"
 
 
 class RateLimitExceededError(Exception):
     """Base exception for API client errors."""
     pass
+
+
+def build_url(params: dict) -> str:
+    """
+    Build Alpha Vantage URL from params dict, filtering None and empty values.
+    """
+    params = {k: v for k, v in params.items() if v not in (None, "")}
+    return BASE + urlencode(params)
 
 
 async def get_data(

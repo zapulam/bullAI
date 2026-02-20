@@ -4,25 +4,12 @@ bullAI Internal Chat - agent tools.
 Written by: zapulam
 """
 
-import requests
-
 from agents import RunContextWrapper, function_tool
 from typing import Any, List, Literal, Optional
 
 from models import ChatContext
 from visualization import build_visualization
-from utils import get_data
-
-URLS = {
-    "ema": "https://www.alphavantage.co/query?function=EMA&symbol={ticker}&interval={interval}&time_period={i}&series_type=open&apikey={key}",
-    "sma": "https://www.alphavantage.co/query?function=SMA&symbol={ticker}&interval={interval}&time_period={i}&series_type=open&apikey={key}",
-    "wma": "https://www.alphavantage.co/query?function=WMA&symbol={ticker}&interval={interval}&time_period={i}&series_type=open&apikey={key}",
-    "quote": "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={key}",
-    "search": "https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords={keyword}&apikey={key}",
-    "time_series_daily": "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={key}",
-    "time_series_weekly": "https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={ticker}&apikey={key}",
-    "time_series_monthly": "https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY&symbol={ticker}&apikey={key}",
-}
+from utils import build_url, get_data
 
 
 ### Chart Refresh (standalone, no agent)
@@ -54,18 +41,17 @@ async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
     if func not in ("time_series_daily", "time_series_weekly", "time_series_monthly"):
         raise ValueError(f"Unsupported func: {func}")
 
-    if func == "time_series_daily":
-        url = URLS["time_series_daily"].format(ticker=ticker, key=alpha_vantage_key)
-        ts_key = "Time Series (Daily)"
-        interval = "daily"
-    elif func == "time_series_weekly":
-        url = URLS["time_series_weekly"].format(ticker=ticker, key=alpha_vantage_key)
-        ts_key = "Weekly Time Series"
-        interval = "weekly"
-    elif func == "time_series_monthly":
-        url = URLS["time_series_monthly"].format(ticker=ticker, key=alpha_vantage_key)
-        ts_key = "Monthly Time Series"
-        interval = "monthly"
+    func_map = {
+        "time_series_daily": ("TIME_SERIES_DAILY", "Time Series (Daily)", "daily"),
+        "time_series_weekly": ("TIME_SERIES_WEEKLY", "Weekly Time Series", "weekly"),
+        "time_series_monthly": ("TIME_SERIES_MONTHLY", "Monthly Time Series", "monthly"),
+    }
+    av_function, ts_key, interval = func_map[func]
+    url = build_url({
+        "function": av_function,
+        "symbol": ticker,
+        "apikey": alpha_vantage_key,
+    })
 
     data = await get_data(url)
 
@@ -114,7 +100,14 @@ async def get_screen_data(
         dict: Screen data.
     """
     if s[0] == 'ema':
-        url = URLS["ema"].format(ticker=ticker, interval=interval, i=s[1], key=key)
+        url = build_url({
+            "function": "EMA",
+            "symbol": ticker,
+            "interval": interval,
+            "time_period": s[1],
+            "series_type": "open",
+            "apikey": key,
+        })
         data = await get_data(url)
         if "Technical Analysis: EMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
@@ -126,10 +119,15 @@ async def get_screen_data(
         return data
 
     if s[0] == 'sma':
-        url = URLS["sma"].format(ticker=ticker, interval=interval, i=s[1], key=key)
-        print(url)
+        url = build_url({
+            "function": "SMA",
+            "symbol": ticker,
+            "interval": interval,
+            "time_period": s[1],
+            "series_type": "open",
+            "apikey": key,
+        })
         data = await get_data(url)
-        print(data)
         if "Technical Analysis: SMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
             raise ValueError(error_msg)
@@ -140,7 +138,14 @@ async def get_screen_data(
         return data
 
     if s[0] == 'wma':
-        url = URLS["wma"].format(ticker=ticker, interval=interval, i=s[1], key=key)
+        url = build_url({
+            "function": "WMA",
+            "symbol": ticker,
+            "interval": interval,
+            "time_period": s[1],
+            "series_type": "open",
+            "apikey": key,
+        })
         data = await get_data(url)
         if "Technical Analysis: WMA" not in data:
             error_msg = data.get("Error Message") or data.get("Note") or "Invalid API response"
@@ -164,7 +169,11 @@ async def quote(
     Args:
         ticker (str): Stock ticker.
     """
-    url = URLS["quote"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
+    url = build_url({
+        "function": "GLOBAL_QUOTE",
+        "symbol": ticker,
+        "apikey": wrapper.context.alpha_vantage_key,
+    })
 
     result = {
         "metadata": None,
@@ -198,19 +207,73 @@ async def search(
         keyword: str
     ) -> dict[str, Any]:
     """
-    Seearch for a ticker based on a keyword.
+    Search for a ticker based on a keyword.
 
     Args:
         keyword (str): Keyword used for search.
     """
-    url = URLS["search"].format(keyword=keyword, key=wrapper.context.alpha_vantage_key)
-
-    result = {
-        "metadata": None,
-    }
+    url = build_url({
+        "function": "SYMBOL_SEARCH",
+        "keywords": keyword,
+        "apikey": wrapper.context.alpha_vantage_key,
+    })
 
     data = await get_data(url)
-    result["metadata"] = data["Meta Data"]
+    matches = data["bestMatches"]
+
+    result = {"best_matches": [
+        {
+            "ticker": match["1. symbol"],
+            "name": match["2. name"],
+            "region": match["3. region"],
+            "currency": match["8. currency"]
+        } for match in matches]}
+    
+    return result
+
+
+@function_tool()
+async def sentiment(
+        wrapper: RunContextWrapper[ChatContext],
+        tickers: Optional[List[str]],
+        topics: Optional[List[Literal[
+            "blockchain",
+            "earnings",
+            "ipo",
+            "mergers_and_acquisitions",
+            "financial_markets",
+            "economy_fiscal",
+            "economy_monetary",
+            "economy_macro",
+            "energy_transportation",
+            "finance",
+            "life_sciences",
+            "manufacturing",
+            "real_estate",
+            "retail_wholesale",
+            "technology"]]],
+        time_from: Optional[str],
+        time_to: Optional[str]
+    ) -> dict[str, Any]:
+    """
+    Seearch for a ticker based on a keyword
+
+    Args:
+        tickers (List[str]): List of tickers to search
+        topics (List[str]): List of topics to search
+        time_from (str): Starting time range formatted like `YYYYMMDD`
+        time_to (str): Ending time range formatted like `YYYYMMDD`
+    """
+    params = {
+        "function": "NEWS_SENTIMENT",
+        "topics": ",".join(topics) if topics else None,
+        "tickers": ",".join(tickers) if tickers else None,
+        "time_from": time_from + "T0000" if time_from else None,
+        "time_to": time_to + "T0000" if time_to else None,
+        "apikey": wrapper.context.alpha_vantage_key,
+    }
+    url = build_url(params)
+    result = await get_data(url)
     
     return result
 
@@ -232,7 +295,11 @@ async def time_series_daily(
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
-    url = URLS["time_series_daily"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
+    url = build_url({
+        "function": "TIME_SERIES_DAILY",
+        "symbol": ticker,
+        "apikey": wrapper.context.alpha_vantage_key,
+    })
 
     result = {
         "metadata": None,
@@ -286,7 +353,11 @@ async def time_series_weekly(
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
-    url = URLS["time_series_weekly"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
+    url = build_url({
+        "function": "TIME_SERIES_WEEKLY",
+        "symbol": ticker,
+        "apikey": wrapper.context.alpha_vantage_key,
+    })
 
     result = {
         "metadata": None,
@@ -340,7 +411,11 @@ async def time_series_monthly(
         screens (List[str]): Optional screens to add to a visualization
         time_periods (List[int]): Time period for each screen added. This list should be the same length as `screens`.
     """
-    url = URLS["time_series_monthly"].format(ticker=ticker, key=wrapper.context.alpha_vantage_key)
+    url = build_url({
+        "function": "TIME_SERIES_MONTHLY",
+        "symbol": ticker,
+        "apikey": wrapper.context.alpha_vantage_key,
+    })
 
     result = {
         "metadata": None,
