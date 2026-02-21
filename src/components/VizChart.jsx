@@ -415,10 +415,9 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-gray-200 font-semibold">{title}</span>
-            {meta?.symbol && <span>Symbol: {meta.symbol}</span>}
-            {meta?.interval && <span>Interval: {meta.interval}</span>}
+            {meta?.symbol && <span>{meta.symbol}</span>}
             {meta?.lastRefreshed && (
-              <span>Last refreshed: {meta.lastRefreshed}</span>
+              <span>{meta.lastRefreshed}</span>
             )}
             {meta?.timeZone && <span>Time zone: {meta.timeZone}</span>}
           </div>
