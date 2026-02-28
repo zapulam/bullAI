@@ -55,6 +55,7 @@ export default function ChatInterface({
   const [isHeadlineComplete, setIsHeadlineComplete] = useState(false);
   const typewriterIndexRef = useRef(0);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const commandsPopupRef = useRef(null);
   const prevIsLoadingRef = useRef(false);
@@ -78,8 +79,18 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const SCROLL_NEAR_BOTTOM_THRESHOLD = 150;
+
   useEffect(() => {
-    scrollToBottom();
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isNearBottom = distanceFromBottom < SCROLL_NEAR_BOTTOM_THRESHOLD;
+
+    if (isNearBottom) {
+      scrollToBottom();
+    }
   }, [messages, isLoading]);
 
   useEffect(() => {
@@ -477,7 +488,7 @@ export default function ChatInterface({
       </div>
 
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-none">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 scrollbar-none">
         <div className={`max-w-7xl mx-auto ${isWelcomeScreen ? 'flex items-center min-h-full' : ''}`}>
           {isWelcomeScreen && (
             <div className="flex flex-col items-center justify-center w-full text-center">

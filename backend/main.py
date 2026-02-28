@@ -30,6 +30,11 @@ from models import (
     AlphaVantageKeyResponse,
     AlphaVantageKeyTypeRequest,
     ChartSaveRequest,
+    PreferredChartTypeRequest,
+    DefaultTimeSeriesRequest,
+    DefaultTechnicalIndicatorRequest,
+    ResponseVerbosityRequest,
+    UserPreferencesResponse,
 )
 from memory import (
     get_conversations,
@@ -222,7 +227,7 @@ async def create_chat(
                         conversation_id=conversation_id,
                         thought=thought,
                         response=response,
-                        status=status,
+                        status=status or "complete",
                     )
                     yield f"data: {event.model_dump_json()}\n\n"
 
@@ -656,6 +661,65 @@ async def update_alpha_vantage_key_type(
         has_key=bool(api_key),
         masked_key=_mask_api_key(api_key) if api_key else None,
         key_type=req.key_type,
+    )
+
+
+@app.get("/settings/user-preferences", response_model=UserPreferencesResponse)
+async def get_user_preferences() -> UserPreferencesResponse:
+    repo = SettingsRepository()
+    return UserPreferencesResponse(
+        preferred_chart_type=repo.get_preferred_chart_type(),
+        default_time_series=repo.get_default_time_series(),
+        default_technical_indicator=repo.get_default_technical_indicator(),
+        response_verbosity=repo.get_response_verbosity(),
+    )
+
+
+@app.put("/settings/preferred-chart-type", response_model=UserPreferencesResponse)
+async def put_preferred_chart_type(req: PreferredChartTypeRequest) -> UserPreferencesResponse:
+    repo = SettingsRepository()
+    repo.set_preferred_chart_type(req.chart_type)
+    return UserPreferencesResponse(
+        preferred_chart_type=repo.get_preferred_chart_type(),
+        default_time_series=repo.get_default_time_series(),
+        default_technical_indicator=repo.get_default_technical_indicator(),
+        response_verbosity=repo.get_response_verbosity(),
+    )
+
+
+@app.put("/settings/default-time-series", response_model=UserPreferencesResponse)
+async def put_default_time_series(req: DefaultTimeSeriesRequest) -> UserPreferencesResponse:
+    repo = SettingsRepository()
+    repo.set_default_time_series(req.time_series)
+    return UserPreferencesResponse(
+        preferred_chart_type=repo.get_preferred_chart_type(),
+        default_time_series=repo.get_default_time_series(),
+        default_technical_indicator=repo.get_default_technical_indicator(),
+        response_verbosity=repo.get_response_verbosity(),
+    )
+
+
+@app.put("/settings/default-technical-indicator", response_model=UserPreferencesResponse)
+async def put_default_technical_indicator(req: DefaultTechnicalIndicatorRequest) -> UserPreferencesResponse:
+    repo = SettingsRepository()
+    repo.set_default_technical_indicator(req.indicator)
+    return UserPreferencesResponse(
+        preferred_chart_type=repo.get_preferred_chart_type(),
+        default_time_series=repo.get_default_time_series(),
+        default_technical_indicator=repo.get_default_technical_indicator(),
+        response_verbosity=repo.get_response_verbosity(),
+    )
+
+
+@app.put("/settings/response-verbosity", response_model=UserPreferencesResponse)
+async def put_response_verbosity(req: ResponseVerbosityRequest) -> UserPreferencesResponse:
+    repo = SettingsRepository()
+    repo.set_response_verbosity(req.verbosity)
+    return UserPreferencesResponse(
+        preferred_chart_type=repo.get_preferred_chart_type(),
+        default_time_series=repo.get_default_time_series(),
+        default_technical_indicator=repo.get_default_technical_indicator(),
+        response_verbosity=repo.get_response_verbosity(),
     )
 
 

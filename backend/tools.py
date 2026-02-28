@@ -450,6 +450,4 @@ async def time_series_monthly(
         result["visualization"] = viz_obj
         del result["timeseries_data"]
 
-    print(result)
-
     return result

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { HelpCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { HelpCircle, ChevronDown } from 'lucide-react';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 function HelpBubble({ content, label }) {
@@ -13,6 +13,69 @@ function HelpBubble({ content, label }) {
         {content}
       </span>
     </span>
+  );
+}
+
+function PrefDropdown({ id, value, options, onChange, disabled }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div ref={containerRef} className="relative w-full max-w-xs">
+      <button
+        type="button"
+        id={id}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-labelledby={`${id}-label`}
+        className="w-full px-4 py-2.5 my-1 flex items-center justify-between text-left bg-surface border border-divider rounded-xl text-white text-sm font-medium transition-all duration-200 hover:border-gray-500 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-divider disabled:hover:bg-surface cursor-pointer"
+      >
+        <span>{selectedOption.label}</span>
+        <ChevronDown
+          className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {isOpen && (
+        <ul
+          role="listbox"
+          className="absolute left-0 right-0 mt-1.5 py-1.5 bg-surface-elevated border border-divider rounded-xl shadow-xl z-50 overflow-hidden"
+        >
+          {options.map((opt) => (
+            <li
+              key={opt.value}
+              role="option"
+              aria-selected={opt.value === value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`px-4 py-2.5 text-sm font-medium cursor-pointer transition-colors duration-150 ${
+                opt.value === value
+                  ? 'bg-gray-700/50 text-white'
+                  : 'text-gray-200 hover:bg-gray-700/30'
+              }`}
+            >
+              {opt.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -39,6 +102,14 @@ export default function Settings() {
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memorySaving, setMemorySaving] = useState(false);
   const [memoryError, setMemoryError] = useState(null);
+
+  const [preferredChartType, setPreferredChartType] = useState('simple');
+  const [defaultTimeSeries, setDefaultTimeSeries] = useState('daily');
+  const [defaultTechnicalIndicator, setDefaultTechnicalIndicator] = useState('none');
+  const [responseVerbosity, setResponseVerbosity] = useState('standard');
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
+  const [preferencesError, setPreferencesError] = useState(null);
 
   useEffect(() => {
     const loadOpenAIKey = async () => {
@@ -102,9 +173,31 @@ export default function Settings() {
       }
     };
 
+    const loadUserPreferences = async () => {
+      setPreferencesLoading(true);
+      setPreferencesError(null);
+      try {
+        const url = buildApiUrl(API_ENDPOINTS.SETTINGS_USER_PREFERENCES);
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to load user preferences: ${response.statusText}`);
+        }
+        const data = await response.json();
+        setPreferredChartType(data.preferred_chart_type || 'simple');
+        setDefaultTimeSeries(data.default_time_series || 'daily');
+        setDefaultTechnicalIndicator(data.default_technical_indicator || 'none');
+        setResponseVerbosity(data.response_verbosity || 'standard');
+      } catch (err) {
+        setPreferencesError(err.message);
+      } finally {
+        setPreferencesLoading(false);
+      }
+    };
+
     loadMemory();
     loadOpenAIKey();
     loadAlphaVantageKey();
+    loadUserPreferences();
   }, []);
 
   const handleSaveOpenAIKey = async () => {
@@ -259,6 +352,91 @@ export default function Settings() {
     }
   };
 
+  const handlePreferredChartTypeChange = async (value) => {
+    setPreferredChartType(value);
+    setPreferencesSaving(true);
+    setPreferencesError(null);
+    try {
+      const url = buildApiUrl(API_ENDPOINTS.SETTINGS_PREFERRED_CHART_TYPE);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chart_type: value }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update preferred chart type: ${response.statusText}`);
+      }
+    } catch (err) {
+      setPreferencesError(err.message);
+    } finally {
+      setPreferencesSaving(false);
+    }
+  };
+
+  const handleDefaultTimeSeriesChange = async (value) => {
+    setDefaultTimeSeries(value);
+    setPreferencesSaving(true);
+    setPreferencesError(null);
+    try {
+      const url = buildApiUrl(API_ENDPOINTS.SETTINGS_DEFAULT_TIME_SERIES);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ time_series: value }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update default time series: ${response.statusText}`);
+      }
+    } catch (err) {
+      setPreferencesError(err.message);
+    } finally {
+      setPreferencesSaving(false);
+    }
+  };
+
+  const handleDefaultTechnicalIndicatorChange = async (e) => {
+    const value = e.target.value;
+    setDefaultTechnicalIndicator(value);
+    setPreferencesSaving(true);
+    setPreferencesError(null);
+    try {
+      const url = buildApiUrl(API_ENDPOINTS.SETTINGS_DEFAULT_TECHNICAL_INDICATOR);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ indicator: value }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update default technical indicator: ${response.statusText}`);
+      }
+    } catch (err) {
+      setPreferencesError(err.message);
+    } finally {
+      setPreferencesSaving(false);
+    }
+  };
+
+  const handleResponseVerbosityChange = async (value) => {
+    setResponseVerbosity(value);
+    setPreferencesSaving(true);
+    setPreferencesError(null);
+    try {
+      const url = buildApiUrl(API_ENDPOINTS.SETTINGS_RESPONSE_VERBOSITY);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verbosity: value }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update response verbosity: ${response.statusText}`);
+      }
+    } catch (err) {
+      setPreferencesError(err.message);
+    } finally {
+      setPreferencesSaving(false);
+    }
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-surface overflow-hidden">
       <div className="flex-1 overflow-y-auto px-6 py-6 text-left">
@@ -374,6 +552,93 @@ export default function Settings() {
                     {alphaVantageKeyClearing ? 'Clearing...' : 'Clear'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-surface-elevated/40 rounded-2xl p-5">
+            <h2 className="text-2xl font-semibold text-white mb-2">User Preferences</h2>
+            {preferencesLoading ? (
+              <p className="text-sm text-gray-500 italic">Loading preferences...</p>
+            ) : null}
+            {preferencesError ? <p className="text-sm text-red-400">{preferencesError}</p> : null}
+            {preferencesSaving ? (
+              <p className="text-sm text-gray-500 italic">Saving...</p>
+            ) : null}
+            <p className="text-xs text-gray-400 border-b border-divider pb-6 mb-6">
+              These preferences are included in the system prompt and affect how the AI responds and creates charts.
+            </p>
+            <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2">
+              <div className="space-y-2">
+                <label id="preferred-chart-type-label" htmlFor="preferred-chart-type" className="block text-sm font-medium text-white">
+                  Preferred Chart Type
+                </label>
+                <PrefDropdown
+                  id="preferred-chart-type"
+                  value={preferredChartType}
+                  options={[
+                    { value: 'simple', label: 'Simple' },
+                    { value: 'candlestick', label: 'Candlestick' },
+                  ]}
+                  onChange={handlePreferredChartTypeChange}
+                  disabled={preferencesSaving}
+                />
+                <p className="text-xs text-gray-400">Line chart of close prices vs OHLC candlestick chart.</p>
+              </div>
+              <div className="space-y-2">
+                <label id="default-time-series-label" htmlFor="default-time-series" className="block text-sm font-medium text-white">
+                  Default Time Series
+                </label>
+                <PrefDropdown
+                  id="default-time-series"
+                  value={defaultTimeSeries}
+                  options={[
+                    { value: 'daily', label: 'Daily' },
+                    { value: 'weekly', label: 'Weekly' },
+                    { value: 'monthly', label: 'Monthly' },
+                  ]}
+                  onChange={handleDefaultTimeSeriesChange}
+                  disabled={preferencesSaving}
+                />
+                <p className="text-xs text-gray-400">Default when user requests a price chart without specifying timeframe.</p>
+              </div>
+              <div className="space-y-2">
+                <label id="default-technical-indicator-label" htmlFor="default-technical-indicator" className="block text-sm font-medium text-white">
+                  Default Technical Indicator
+                </label>
+                <PrefDropdown
+                  id="default-technical-indicator"
+                  value={defaultTechnicalIndicator}
+                  options={[
+                    { value: 'none', label: 'None' },
+                    { value: 'sma:20', label: 'SMA(20)' },
+                    { value: 'sma:50', label: 'SMA(50)' },
+                    { value: 'ema:20', label: 'EMA(20)' },
+                    { value: 'ema:50', label: 'EMA(50)' },
+                    { value: 'wma:20', label: 'WMA(20)' },
+                    { value: 'wma:50', label: 'WMA(50)' },
+                  ]}
+                  onChange={handleDefaultTechnicalIndicatorChange}
+                  disabled={preferencesSaving}
+                />
+                <p className="text-xs text-gray-400">Add this indicator by default to price charts when creating them.</p>
+              </div>
+              <div className="space-y-2">
+                <label id="response-verbosity-label" htmlFor="response-verbosity" className="block text-sm font-medium text-white">
+                  Response Verbosity
+                </label>
+                <PrefDropdown
+                  id="response-verbosity"
+                  value={responseVerbosity}
+                  options={[
+                    { value: 'brief', label: 'Brief' },
+                    { value: 'standard', label: 'Standard' },
+                    { value: 'detailed', label: 'Detailed' },
+                  ]}
+                  onChange={handleResponseVerbosityChange}
+                  disabled={preferencesSaving}
+                />
+                <p className="text-xs text-gray-400">Controls how concise or thorough the AI responses are.</p>
               </div>
             </div>
           </section>

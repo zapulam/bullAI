@@ -43,6 +43,38 @@ from repositories import SettingsRepository
 from streaming import stream_result_events
 
 
+def _build_memories_and_preferences_block(settings_repo: SettingsRepository) -> str:
+    """Build the system message block containing user memories and preferences."""
+    memory_content = settings_repo.get_user_memory()
+    memories_block = ""
+    if memory_content and memory_content.strip():
+        memories_block = "\n\n## User Memories\n" + memory_content.strip()
+
+    prefs = []
+    chart_type = settings_repo.get_preferred_chart_type()
+    if chart_type:
+        prefs.append(f"Preferred chart type unless otherwise specified: {chart_type}")
+
+    time_series = settings_repo.get_default_time_series()
+    if time_series:
+        prefs.append(f"Default time series for price charts unless otherwise specified: {time_series}")
+
+    indicator = settings_repo.get_default_technical_indicator()
+    if indicator and indicator != "none":
+        prefs.append(f"Add this technical indicator by default to price charts unless otherwise specified: {indicator}")
+
+    verbosity = settings_repo.get_response_verbosity()
+    if verbosity == "brief":
+        prefs.append("Response style: Be very concise. Use 1-3 bullets per section. Minimize interpretation.")
+    elif verbosity == "detailed":
+        prefs.append("Response style: Provide thorough analysis. Expand each section with more context and examples.")
+
+    if prefs:
+        memories_block += "\n\n## User Preferences\n" + "\n".join(prefs)
+
+    return memories_block
+
+
 def _make_memories_input_filter(memories_block: str):
     """Create a call_model_input_filter that adds memories as a system message before user input, only at the start of the turn."""
     has_added = [False]
@@ -73,7 +105,7 @@ def tool_handler(
     """
     for result in results:
         output = result.output
-        if not getattr(output, "follow_up", True):
+        if not output.get("follow_up", True):
             return ToolsToFinalOutputResult(
                 is_final_output=True,
                 final_output=output
@@ -197,12 +229,9 @@ class ChatService:
         provider = OpenAIProvider(openai_client=self.openai_client)
         settings_repo = SettingsRepository()
 
-        memory_content = settings_repo.get_user_memory()
-        memories_block = ""
-        if memory_content and memory_content.strip():
-            memories_block = "\n\n## User Memories\n" + memory_content.strip()
-
+        memories_block = _build_memories_and_preferences_block(settings_repo)
         session_cb = _make_memories_input_filter(memories_block)
+
         key_type = settings_repo.get_alpha_vantage_key_type()
         starting_agent = self.premium if key_type == "premium" else self.triage
 

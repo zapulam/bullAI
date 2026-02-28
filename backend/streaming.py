@@ -80,7 +80,7 @@ async def stream_result_events(result):
                 }
         elif isinstance(event, RunItemStreamEvent):
             if event.item.type == "tool_call_item":
-                tool_name = event.item.raw_item.name
+                tool_name = getattr(event.item.raw_item, "name", "web_search_tool")
                 tool_args = event.item.raw_item.arguments if hasattr(event.item.raw_item, 'arguments') else {}
                 yield {
                     "type": "tool_call",

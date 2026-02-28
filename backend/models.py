@@ -76,6 +76,30 @@ class AlphaVantageKeyResponse(BaseModel):
     key_type: Literal["free", "premium"] = "free"
 
 
+# User preferences
+class PreferredChartTypeRequest(BaseModel):
+    chart_type: Literal["simple", "candlestick"]
+
+
+class DefaultTimeSeriesRequest(BaseModel):
+    time_series: Literal["daily", "weekly", "monthly"]
+
+
+class DefaultTechnicalIndicatorRequest(BaseModel):
+    indicator: Literal["none", "sma:20", "sma:50", "ema:20", "ema:50", "wma:20", "wma:50"]
+
+
+class ResponseVerbosityRequest(BaseModel):
+    verbosity: Literal["brief", "standard", "detailed"]
+
+
+class UserPreferencesResponse(BaseModel):
+    preferred_chart_type: Literal["simple", "candlestick"] = "simple"
+    default_time_series: Literal["daily", "weekly", "monthly"] = "daily"
+    default_technical_indicator: Literal["none", "sma:20", "sma:50", "ema:20", "ema:50", "wma:20", "wma:50"] = "none"
+    response_verbosity: Literal["brief", "standard", "detailed"] = "standard"
+
+
 # Time series models
 class TimeSeriesMeta(BaseModel):
     symbol: Optional[str] = None
