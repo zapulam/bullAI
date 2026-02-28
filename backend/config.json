@@ -1,4 +1,9 @@
 {
-    "db_path": "../.db/db.db",
-    "docs_path": "../.db/docs.db"
+    "db": {
+        "db_path": "../.db/db.db",
+        "docs_path": "../.db/docs.db"
+    },
+    "tools": {
+        "sentiment_limit": 10
+    }
 }

@@ -19,6 +19,8 @@ class Settings:
     db_path: str
     docs_path: str
 
+    sentiment_limit: int
+
 
 @lru_cache(maxsize=1)
 def get_settings(
@@ -33,8 +35,10 @@ def get_settings(
         openai_api_key = os.getenv("OPENAI_API_KEY"),
         alpha_vantage_api_key = os.getenv("ALPHA_VANTAGE_API_KEY"),
 
-        db_path = cfg["db_path"],
-        docs_path = cfg["docs_path"]
+        db_path = cfg["db"]["db_path"],
+        docs_path = cfg["db"]["docs_path"],
+
+        sentiment_limit = cfg["tools"]["sentiment_limit"]
     )
 
 
