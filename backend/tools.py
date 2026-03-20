@@ -9,19 +9,24 @@ from typing import Any, List, Literal, Optional
 
 from models import ChatContext
 from visualization import build_visualization
-from utils import build_url, get_data
+from utils import build_url, fetch_google_finance_search, get_data
 
 from settings import settings
 
 
 ### Chart Refresh (standalone, no agent)
-async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
+async def execute_chart_call(
+    call_data: dict,
+    alpha_vantage_key: str,
+    key_type: str = "free",
+) -> dict:
     """
     Execute a time-series chart call using call_data. Used for chart refresh.
 
     Args:
         call_data: Dict with func, ticker, chart_type, screens, time_periods.
         alpha_vantage_key: Alpha Vantage API key.
+        key_type: "premium" to refetch technical screen data; same as time_series_* tools.
 
     Returns:
         Tool result dict with visualization key.
@@ -57,9 +62,25 @@ async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
 
     data = await get_data(url)
 
+    info = data.get("Information") or ""
+    if isinstance(info, str) and info.startswith("We have detected your API key as"):
+        raise ValueError("Your Alpha Vantage API key has met its daily rate limit.")
+
+    err_msg = data.get("Error Message")
+    note = data.get("Note")
+    if err_msg or note:
+        parts = [str(p) for p in (err_msg, note) if p]
+        raise ValueError(" ".join(parts) if parts else "Alpha Vantage returned an error.")
+
+    if ts_key not in data:
+        raise ValueError(
+            f"Alpha Vantage response missing time series ({ts_key}). Check symbol or API response."
+        )
+
     result = {
         "metadata": data.get("Meta Data"),
         "viz": True,
+        "timeseries_data": data[ts_key],
         "call": {
             "func": func,
             "ticker": ticker,
@@ -69,7 +90,7 @@ async def execute_chart_call(call_data: dict, alpha_vantage_key: str) -> dict:
         },
     }
 
-    if screens and time_periods:
+    if key_type == "premium" and screens and time_periods:
         result["screen_data"] = []
         for s in zip(screens, time_periods):
             d = await get_screen_data(s, interval, alpha_vantage_key, ticker)
@@ -665,3 +686,30 @@ async def time_series_monthly(
         del result["timeseries_data"]
 
     return result
+
+
+@function_tool()
+async def google_finance_search(
+    wrapper: RunContextWrapper[ChatContext],
+    query: str,
+    max_results: Optional[int] = 10,
+) -> dict[str, Any]:
+    """
+    Search Google Finance by keyword or ticker using the same query shape as the
+    finance site search box. Results are parsed from server-rendered HTML at
+    google.com/finance?q=... (not the JS-heavy beta shell). beta_search_url in the
+    response opens the same query in Google Finance beta for human review.
+
+    Markup changes or IP blocking can break parsing; this is not a trading API.
+
+    Args:
+        query: Company name, ticker, or other finance search text.
+        max_results: Maximum instruments to return (1–25).
+    """
+    _ = wrapper
+    try:
+        cap = int(max_results) if max_results is not None else 10
+    except (TypeError, ValueError):
+        cap = 10
+    cap = max(1, min(cap, 25))
+    return await fetch_google_finance_search(query, max_results=cap)

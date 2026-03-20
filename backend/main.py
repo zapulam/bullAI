@@ -42,7 +42,7 @@ from memory import (
     delete_conversation,
     initialize_sqlite_db,
 )
-from repositories import ChartRepository, SettingsRepository
+from repositories import ChartRepository, ChartLimitExceeded, SettingsRepository
 from settings import settings
 from tools import execute_chart_call
 from streaming import (
@@ -303,11 +303,14 @@ async def save_chart(
         Saved chart with id.
     """
     repo = ChartRepository()
-    chart = repo.save_chart(
-        title=req.title,
-        visualization_data=req.visualization_data,
-        call_data=req.call_data,
-    )
+    try:
+        chart = repo.save_chart(
+            title=req.title,
+            visualization_data=req.visualization_data,
+            call_data=req.call_data,
+        )
+    except ChartLimitExceeded as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Chart limit reached")
     return chart
 
 
@@ -349,8 +352,9 @@ async def refresh_chart(chart_id: str) -> Dict[str, Any]:
             status_code=400,
             detail="Alpha Vantage API key not configured. Add it in Settings.",
         )
+    key_type = settings_repo.get_alpha_vantage_key_type()
     try:
-        result = await execute_chart_call(call_data, alpha_vantage_key)
+        result = await execute_chart_call(call_data, alpha_vantage_key, key_type)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -455,6 +459,25 @@ async def get_chat_history(
         if raw.get("type") in ("reasoning", "function_call"):
             continue
 
+        # Tool output is sometimes persisted after the assistant message but before the
+        # next user message. In that case pending_visualization would attach to the
+        # wrong assistant unless we flush onto the previous assistant row first.
+        if role == "user" and pending_visualization is not None:
+            if messages and messages[-1].get("role") == "assistant":
+                last_msg = messages[-1]
+                if "visualization" not in last_msg:
+                    last_msg["visualization"] = pending_visualization
+                    pending_visualization = None
+
+        # Same as above when the next stored row is another assistant (tool output
+        # between two assistant chunks) rather than the next user message.
+        if role == "assistant" and pending_visualization is not None:
+            if messages and messages[-1].get("role") == "assistant":
+                last_msg = messages[-1]
+                if "visualization" not in last_msg:
+                    last_msg["visualization"] = pending_visualization
+                    pending_visualization = None
+
         thought = None
         status = None
 
@@ -545,7 +568,13 @@ async def get_chat_history(
                 pending_visualization = None
 
         messages.append(message_data)
-    
+
+    # Trailing tool output after the last assistant (no following user/assistant row).
+    if pending_visualization is not None and messages and messages[-1].get("role") == "assistant":
+        last_msg = messages[-1]
+        if "visualization" not in last_msg:
+            last_msg["visualization"] = pending_visualization
+
     return {"messages": messages}
 
 

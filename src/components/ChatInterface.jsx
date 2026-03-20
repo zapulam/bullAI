@@ -62,10 +62,17 @@ export default function ChatInterface({
   const hasTriggeredRefetchRef = useRef(false);
   const { messages, isLoading, sendMessage, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
   const { saveChart } = useCharts();
+  const [saveChartError, setSaveChartError] = useState(null);
 
   const handleSaveChart = React.useCallback(
-    (payload) => {
-      saveChart(payload.title, payload.visualization_data, payload.call_data);
+    async (payload) => {
+      setSaveChartError(null);
+      try {
+        await saveChart(payload.title, payload.visualization_data, payload.call_data);
+      } catch (err) {
+        setSaveChartError(err?.message || 'Could not save chart');
+        throw err;
+      }
     },
     [saveChart]
   );
@@ -490,6 +497,22 @@ export default function ChatInterface({
       {/* Messages Container */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-6 py-6 scrollbar-none">
         <div className={`max-w-7xl mx-auto ${isWelcomeScreen ? 'flex items-center min-h-full' : ''}`}>
+          {saveChartError && (
+            <div
+              className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200"
+              role="alert"
+            >
+              <p className="min-w-0 flex-1">{saveChartError}</p>
+              <button
+                type="button"
+                onClick={() => setSaveChartError(null)}
+                className="shrink-0 p-1 text-red-300 hover:text-white hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
+                aria-label="Dismiss save chart error"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
           {isWelcomeScreen && (
             <div className="flex flex-col items-center justify-center w-full text-center">
               <div className="mb-4 relative flex items-center justify-center animate-slide-up">

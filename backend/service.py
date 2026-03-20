@@ -67,7 +67,7 @@ def tool_handler(
 class ChatService:
     openai_client: AsyncOpenAI
     alpha_vantage_key: Optional[str] = None
-    model: str = "gpt-5-mini"
+    model: str = "gpt-5.4-mini"
     summary_model: str = "gpt-4.1-nano"
 
     def __post_init__(self):
@@ -80,6 +80,7 @@ class ChatService:
         """
         self.base_tools = [
             WebSearchTool(),
+            google_finance_search,
             earnings,
             gainers_and_losers,
             ipo,
@@ -91,6 +92,7 @@ class ChatService:
 
         self.premium_tools = [
             WebSearchTool(),
+            google_finance_search,
             bulk_quote,
             earnings,
             gainers_and_losers,
@@ -233,10 +235,15 @@ class ChatService:
 
             # Generate summary after the first exchange if not already generated
             has_summary = await get_session_has_summary(conversation_id)
-            if not has_summary and accumulated_text:
+            if not has_summary:
+                assistant_for_summary = (
+                    accumulated_text.strip()
+                    if accumulated_text and accumulated_text.strip()
+                    else ""
+                )
                 summary = await self.generate_summary(
                     user_input=user_input,
-                    assistant_response=accumulated_text,
+                    assistant_response=assistant_for_summary,
                 )
                 await update_session_summary(conversation_id, summary)
 

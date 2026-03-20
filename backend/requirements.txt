@@ -20,11 +20,13 @@ colorama
 pyfiglet
 redis
 requests
+httpx
 beautifulsoup4
 langchain-community
 langchain_openai
 
 # Development tools
+pytest
 black
 flake8
 flake8-bugbear

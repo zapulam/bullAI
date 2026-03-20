@@ -42,7 +42,15 @@ export function useCharts() {
         }),
       });
       if (!response.ok) {
-        throw new Error(`Failed to save chart: ${response.statusText}`);
+        const data = await response.json().catch(() => ({}));
+        let detail = data.detail;
+        if (Array.isArray(detail)) {
+          detail = detail.map((d) => d?.msg || d).join(' ');
+        }
+        const message =
+          (typeof detail === 'string' && detail) ||
+          `Failed to save chart: ${response.statusText}`;
+        throw new Error(message);
       }
       const saved = await response.json();
       setCharts((prev) => [saved, ...prev]);
@@ -83,7 +91,6 @@ export function useCharts() {
       setCharts((prev) => prev.map((c) => (c.id === chartId ? updated : c)));
       return updated;
     } catch (err) {
-      setError(err.message);
       throw err;
     } finally {
       setRefreshingChartId(null);
