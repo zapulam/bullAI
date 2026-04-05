@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useLayoutEffect } from 'react';
+import React, { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ResponsiveContainer,
@@ -12,7 +12,7 @@ import {
   Brush,
 } from 'recharts';
 import { useYAxis } from 'recharts/es6/hooks';
-import { Save, Maximize2, X } from 'lucide-react';
+import { Save, Check, Maximize2, X } from 'lucide-react';
 
 const SCREEN_COLORS = ['#a78bfa', '#f472b6', '#34d399'];
 const CANDLE_UP = '#22c55e';
@@ -346,9 +346,33 @@ function ChartBody({ chartData, chartType, screenTitles, chartHeight }) {
 
 const DEFAULT_CHART_HEIGHT = 320;
 
+const SAVE_OVERLAY_HOLD_MS = 2000;
+const SAVE_OVERLAY_FADE_MS = 350;
+
 export default function VizChart({ visualization, onSave, height = DEFAULT_CHART_HEIGHT }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fullscreenHeight, setFullscreenHeight] = useState(600);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveSuccessOverlay, setSaveSuccessOverlay] = useState(false);
+  const [saveSuccessExiting, setSaveSuccessExiting] = useState(false);
+  const saveOverlayHoldTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveOverlayHoldTimerRef.current) {
+        clearTimeout(saveOverlayHoldTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!saveSuccessExiting) return undefined;
+    const t = setTimeout(() => {
+      setSaveSuccessOverlay(false);
+      setSaveSuccessExiting(false);
+    }, SAVE_OVERLAY_FADE_MS);
+    return () => clearTimeout(t);
+  }, [saveSuccessExiting]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -386,18 +410,40 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   const screenTitles = screens.map((s) => s?.title).filter(Boolean);
 
-  const handleSave = () => {
-    if (onSave && visualization) {
-      onSave({
-        title,
-        visualization_data: {
-          chartData: visualization.chartData,
-          chartType: visualization.chartType ?? 'simple',
-          screens: visualization.screens,
-          meta: visualization.meta,
-        },
-        call_data: call,
-      });
+  const handleSave = async () => {
+    if (!onSave || !visualization) return;
+    const payload = {
+      title,
+      visualization_data: {
+        chartData: visualization.chartData,
+        chartType: visualization.chartType ?? 'simple',
+        screens: visualization.screens,
+        meta: visualization.meta,
+      },
+      call_data: call,
+    };
+    setSaveBusy(true);
+    if (saveOverlayHoldTimerRef.current) {
+      clearTimeout(saveOverlayHoldTimerRef.current);
+      saveOverlayHoldTimerRef.current = null;
+    }
+    setSaveSuccessOverlay(false);
+    setSaveSuccessExiting(false);
+    try {
+      const maybePromise = onSave(payload);
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        await maybePromise;
+      }
+      setSaveSuccessOverlay(true);
+      setSaveSuccessExiting(false);
+      saveOverlayHoldTimerRef.current = setTimeout(() => {
+        setSaveSuccessExiting(true);
+        saveOverlayHoldTimerRef.current = null;
+      }, SAVE_OVERLAY_HOLD_MS);
+    } catch {
+      // Error banner is shown by ChatInterface
+    } finally {
+      setSaveBusy(false);
     }
   };
 
@@ -411,7 +457,24 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
 
   return (
     <>
-      <div className="bg-surface-elevated border border-divider rounded-xl p-4 pb-6 overflow-hidden">
+      <div className="relative bg-surface-elevated border border-divider rounded-xl p-4 pb-6 overflow-hidden">
+        {saveSuccessOverlay && (
+          <div
+            className={`absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-center gap-2 px-4 rounded-xl bg-green-950/80 backdrop-blur-[1px] transition-opacity duration-300 ${
+              saveSuccessExiting
+                ? 'opacity-0'
+                : 'opacity-100 chart-refresh-overlay-success'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="sr-only">Chart saved to the Charts page</span>
+            <Check
+              className="w-12 h-12 text-green-400 drop-shadow-lg chart-refresh-check-pop"
+              aria-hidden
+            />
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-gray-200 font-semibold">{title}</span>
@@ -426,10 +489,12 @@ export default function VizChart({ visualization, onSave, height = DEFAULT_CHART
               <button
                 type="button"
                 onClick={handleSave}
-                className="flex items-center gap-1 px-2 py-2 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+                disabled={saveBusy}
+                className="flex items-center gap-1 px-2 py-2 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 title="Save chart to Charts page"
+                aria-label="Save chart to Charts page"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-4 h-4" aria-hidden />
               </button>
             )}
             <button

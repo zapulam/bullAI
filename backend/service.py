@@ -5,7 +5,6 @@ Written by: zapulam
 """
 
 import inspect
-import json
 import string
 
 from agents import (
@@ -14,16 +13,13 @@ from agents import (
     RunConfig,
     Runner,
     RunContextWrapper,
-    ToolsToFinalOutputFunction,
     ToolsToFinalOutputResult,
     WebSearchTool,
 )
-from agents.items import TResponseInputItem
-from agents.run import ModelInputData
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
-from agents.mcp import MCPServerStdio, create_static_tool_filter
+from agents.mcp import create_static_tool_filter
 from agents.models.openai_provider import OpenAIProvider
-from agents.tool import HostedMCPTool, FunctionToolResult
+from agents.tool import FunctionToolResult
 
 from dataclasses import dataclass
 from openai import AsyncOpenAI
@@ -39,61 +35,12 @@ from memory import (
     get_session_has_summary,
     update_session_summary
 )
+from context import (
+    build_memory,
+    create_cb,
+)
 from repositories import SettingsRepository
 from streaming import stream_result_events
-
-
-def _build_memories_and_preferences_block(settings_repo: SettingsRepository) -> str:
-    """Build the system message block containing user memories and preferences."""
-    memory_content = settings_repo.get_user_memory()
-    memories_block = ""
-    if memory_content and memory_content.strip():
-        memories_block = "\n\n## User Memories\n" + memory_content.strip()
-
-    prefs = []
-    chart_type = settings_repo.get_preferred_chart_type()
-    if chart_type:
-        prefs.append(f"Preferred chart type unless otherwise specified: {chart_type}")
-
-    time_series = settings_repo.get_default_time_series()
-    if time_series:
-        prefs.append(f"Default time series for price charts unless otherwise specified: {time_series}")
-
-    indicator = settings_repo.get_default_technical_indicator()
-    if indicator and indicator != "none":
-        prefs.append(f"Add this technical indicator by default to price charts unless otherwise specified: {indicator}")
-
-    verbosity = settings_repo.get_response_verbosity()
-    if verbosity == "brief":
-        prefs.append("Response style: Be very concise. Use 1-3 bullets per section. Minimize interpretation.")
-    elif verbosity == "detailed":
-        prefs.append("Response style: Provide thorough analysis. Expand each section with more context and examples.")
-
-    if prefs:
-        memories_block += "\n\n## User Preferences\n" + "\n".join(prefs)
-
-    return memories_block
-
-
-def _make_memories_input_filter(memories_block: str):
-    """Create a call_model_input_filter that adds memories as a system message before user input, only at the start of the turn."""
-    has_added = [False]
-
-    def _filter(payload):
-        if not memories_block or has_added[0]:
-            return payload.model_data
-        has_added[0] = True
-        memories_message: TResponseInputItem = {
-            "role": "system",
-            "content": memories_block,
-        }
-        new_input = [memories_message] + list(payload.model_data.input)
-        return ModelInputData(
-            input=new_input,
-            instructions=payload.model_data.instructions,
-        )
-
-    return _filter
 
 
 def tool_handler(
@@ -123,7 +70,7 @@ def tool_handler(
 class ChatService:
     openai_client: AsyncOpenAI
     alpha_vantage_key: Optional[str] = None
-    model: str = "gpt-5-mini"
+    model: str = "gpt-5.4-mini"
     summary_model: str = "gpt-4.1-nano"
 
     def __post_init__(self):
@@ -136,13 +83,29 @@ class ChatService:
         """
         self.base_tools = [
             WebSearchTool(),
+            google_finance_search,
+            earnings,
+            gainers_and_losers,
+            ipo,
             quote,
             time_series_daily,
             time_series_weekly,
             time_series_monthly
         ]
 
-        self.premium_tools = []  # TODO
+        self.premium_tools = [
+            WebSearchTool(),
+            google_finance_search,
+            bulk_quote,
+            earnings,
+            gainers_and_losers,
+            ipo,
+            options,
+            quote,
+            time_series_daily,
+            time_series_weekly,
+            time_series_monthly
+        ]
 
         base_instructions = f"{RECOMMENDED_PROMPT_PREFIX}\n{TRIAGE_PROMPT}"
         model_settings = ModelSettings(
@@ -153,7 +116,7 @@ class ChatService:
             response_include=["reasoning.encrypted_content"],
         )
 
-        self.triage = Agent(
+        self.basic = Agent(
             name="Triage agent",
             instructions=base_instructions,
             tools=self.base_tools,
@@ -232,11 +195,11 @@ class ChatService:
         provider = OpenAIProvider(openai_client=self.openai_client)
         settings_repo = SettingsRepository()
 
-        memories_block = _build_memories_and_preferences_block(settings_repo)
-        session_cb = _make_memories_input_filter(memories_block)
+        memories_block = build_memory(settings_repo)
+        session_cb = create_cb(memories_block)
 
         key_type = settings_repo.get_alpha_vantage_key_type()
-        starting_agent = self.premium if key_type == "premium" else self.triage
+        starting_agent = self.premium if key_type == "premium" else self.basic
 
         session = await create_session_and_load_state(
             conversation_id=conversation_id
@@ -275,10 +238,15 @@ class ChatService:
 
             # Generate summary after the first exchange if not already generated
             has_summary = await get_session_has_summary(conversation_id)
-            if not has_summary and accumulated_text:
+            if not has_summary:
+                assistant_for_summary = (
+                    accumulated_text.strip()
+                    if accumulated_text and accumulated_text.strip()
+                    else ""
+                )
                 summary = await self.generate_summary(
                     user_input=user_input,
-                    assistant_response=accumulated_text,
+                    assistant_response=assistant_for_summary,
                 )
                 await update_session_summary(conversation_id, summary)
 

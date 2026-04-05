@@ -11,6 +11,16 @@ from typing import Any, Dict, List, Optional
 
 from .db import get_connection
 
+MAX_SAVED_CHARTS = 20
+
+CHART_LIMIT_MESSAGE = (
+    "Maximum of 20 saved charts reached. Delete a chart on the Charts page before saving another."
+)
+
+
+class ChartLimitExceeded(Exception):
+    """Raised when the charts table already has MAX_SAVED_CHARTS rows."""
+
 
 class ChartRepository:
     """Repository for saved chart persistence."""
@@ -37,6 +47,10 @@ class ChartRepository:
         call_json = json.dumps(call_data)
 
         with get_connection() as conn:
+            count_row = conn.execute("SELECT COUNT(*) FROM charts").fetchone()
+            count = int(count_row[0]) if count_row else 0
+            if count >= MAX_SAVED_CHARTS:
+                raise ChartLimitExceeded(CHART_LIMIT_MESSAGE)
             conn.execute(
                 """
                 INSERT INTO charts (id, title, visualization_data, call_data)
@@ -67,7 +81,9 @@ class ChartRepository:
                 SELECT id, title, visualization_data, call_data, created_at
                 FROM charts
                 ORDER BY created_at DESC
-                """
+                LIMIT ?
+                """,
+                (MAX_SAVED_CHARTS,),
             )
             rows = cursor.fetchall()
         charts = []

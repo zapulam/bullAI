@@ -217,3 +217,54 @@ a:hover {
   outline: none;
 }
 
+@keyframes chart-refresh-success-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes chart-refresh-check-pop {
+  0% {
+    transform: scale(0.65);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes chart-refresh-error-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-3px);
+  }
+  40%,
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.chart-refresh-overlay-success {
+  animation: chart-refresh-success-in 0.28s ease-out;
+}
+
+.chart-refresh-overlay-error {
+  animation: chart-refresh-success-in 0.22s ease-out, chart-refresh-error-shake 0.45s ease-out 0.1s;
+}
+
+.chart-refresh-check-pop {
+  animation: chart-refresh-check-pop 0.45s ease-out;
+}
+

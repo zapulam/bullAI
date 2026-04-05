@@ -41,7 +41,7 @@ from memory import (
     delete_conversation,
     initialize_sqlite_db,
 )
-from repositories import ChartRepository, SettingsRepository
+from repositories import ChartRepository, ChartLimitExceeded, SettingsRepository
 from settings import settings
 from tools import execute_chart_call
 from streaming import (
@@ -310,11 +310,14 @@ async def save_chart(
         Saved chart with id.
     """
     repo = ChartRepository()
-    chart = repo.save_chart(
-        title=req.title,
-        visualization_data=req.visualization_data,
-        call_data=req.call_data,
-    )
+    try:
+        chart = repo.save_chart(
+            title=req.title,
+            visualization_data=req.visualization_data,
+            call_data=req.call_data,
+        )
+    except ChartLimitExceeded as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Chart limit reached")
     return chart
 
 
@@ -356,8 +359,9 @@ async def refresh_chart(chart_id: str) -> Dict[str, Any]:
             status_code=400,
             detail="Alpha Vantage API key not configured. Add it in Settings.",
         )
+    key_type = settings_repo.get_alpha_vantage_key_type()
     try:
-        result = await execute_chart_call(call_data, alpha_vantage_key)
+        result = await execute_chart_call(call_data, alpha_vantage_key, key_type)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

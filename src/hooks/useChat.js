@@ -1,6 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
 
+/** Stable unique id for chat rows (avoids duplicate React keys when Date.now() collides). */
+function newMessageId(prefix) {
+  const suffix =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${suffix}`;
+}
+
 export const useChat = (initialSessionId = null) => {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -9,6 +18,11 @@ export const useChat = (initialSessionId = null) => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const abortControllerRef = useRef(null);
   const loadedSessionRef = useRef(null);
+  const messagesRef = useRef([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (initialSessionId) {
@@ -64,13 +78,14 @@ export const useChat = (initialSessionId = null) => {
           });
           
           // Deduplicate messages by content and role to prevent duplicates
+          // Include index so empty-content assistant rows (e.g. chart-only) are not collapsed.
           const seenMessages = new Set();
-          const uniqueMessages = messagesWithContent.filter((msg) => {
+          const uniqueMessages = messagesWithContent.filter((msg, index) => {
             // Normalize content for comparison
             const contentStr = typeof msg.content === 'string' 
               ? msg.content 
               : JSON.stringify(msg.content);
-            const key = `${msg.role}-${contentStr}`;
+            const key = `${msg.role}-${index}-${contentStr}`;
             if (seenMessages.has(key)) {
               return false;
             }
@@ -176,7 +191,7 @@ export const useChat = (initialSessionId = null) => {
     }
 
     const userMessage = {
-      id: `user-${Date.now()}`,
+      id: newMessageId('user'),
       role: 'user',
       content: trimmedContent,
       timestamp: new Date().toISOString(),
@@ -189,7 +204,7 @@ export const useChat = (initialSessionId = null) => {
     abortControllerRef.current = new AbortController();
 
     // Create a placeholder assistant message that we'll update as chunks arrive
-    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantMessageId = newMessageId('assistant');
     const assistantMessage = {
       id: assistantMessageId,
       role: 'assistant',
@@ -201,8 +216,8 @@ export const useChat = (initialSessionId = null) => {
     setMessages(prev => [...prev, assistantMessage]);
 
     try {
-      // Build conversation history in the format expected by the backend
-      const conversationHistory = messages
+      // Prior messages only (ref matches last committed state; not yet including this turn's user+assistant)
+      const conversationHistory = messagesRef.current
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({
           role: m.role,
@@ -343,7 +358,7 @@ export const useChat = (initialSessionId = null) => {
       setMessages(prev => prev.map(msg => 
         msg.id === assistantMessageId 
           ? {
-              id: `error-${Date.now()}`,
+              id: newMessageId('error'),
               role: 'error',
               content: `Failed to get response: ${err.message}`,
               timestamp: new Date().toISOString(),
@@ -354,7 +369,7 @@ export const useChat = (initialSessionId = null) => {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [isLoading, messages, sessionId]);
+  }, [isLoading, sessionId]);
 
   const submitFollowUp = useCallback(
     (assistantMessageId, text) => {
