@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { UserMessage, AssistantMessage, SystemMessage, ErrorMessage } from './ChatMessage';
 import { useChat } from '../hooks/useChat';
 import { useCharts } from '../hooks/useCharts';
+import { useInstantPrompts, DEFAULT_INSTANT_PROMPTS } from '../hooks/useInstantPrompts';
 import { API_ENDPOINTS, buildApiUrl } from '../config/api';
-import { HelpCircle, X } from 'lucide-react';
+import { HelpCircle, X, ListPlus, Plus, Trash2 } from 'lucide-react';
 
 const BULL_IMAGES = [
   '/bull.png',
@@ -49,6 +50,9 @@ export default function ChatInterface({
   const [showCommandsPopup, setShowCommandsPopup] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isPromptManagerOpen, setIsPromptManagerOpen] = useState(false);
+  const [draftPrompts, setDraftPrompts] = useState([]);
+  const [newPromptText, setNewPromptText] = useState('');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [isApiKeyLoading, setIsApiKeyLoading] = useState(true);
   const [typedHeadline, setTypedHeadline] = useState('');
@@ -60,8 +64,11 @@ export default function ChatInterface({
   const commandsPopupRef = useRef(null);
   const prevIsLoadingRef = useRef(false);
   const hasTriggeredRefetchRef = useRef(false);
-  const { messages, isLoading, sendMessage, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
+  const followUpComposeRef = useRef(null);
+  const [followUpSendError, setFollowUpSendError] = useState(null);
+  const { messages, isLoading, sendMessage, submitFollowUp, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
   const { saveChart } = useCharts();
+  const { prompts: instantPrompts, loaded: instantPromptsLoaded, savePrompts } = useInstantPrompts();
 
   const handleSaveChart = React.useCallback(
     (payload) => {
@@ -104,6 +111,18 @@ export default function ChatInterface({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isHelpOpen]);
+
+  useEffect(() => {
+    if (!isPromptManagerOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsPromptManagerOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isPromptManagerOpen]);
 
   useEffect(() => {
     const loadApiKeyStatus = async () => {
@@ -216,6 +235,68 @@ export default function ChatInterface({
     }));
   }, []);
 
+  const buildOutgoingMessage = React.useCallback(
+    (raw) => {
+      let messageToSend = String(raw).trim();
+      if (!messageToSend) return '';
+      if (messageToSend.startsWith('/')) {
+        const commandMatch = messageToSend.match(/^\/(\w+)(?:\s+(.+))?$/);
+        if (commandMatch) {
+          const [, commandName, userInput] = commandMatch;
+          const command = availableCommands.find((cmd) => cmd.command === commandName);
+          if (command && userInput) {
+            messageToSend = `${command.contextPrefix}${userInput}`;
+          } else if (command && !userInput) {
+            messageToSend = `${command.contextPrefix}${command.description}`;
+          }
+        }
+      }
+      return messageToSend;
+    },
+    [availableCommands]
+  );
+
+  const openPromptManager = () => {
+    setDraftPrompts([...instantPrompts]);
+    setNewPromptText('');
+    setIsPromptManagerOpen(true);
+  };
+
+  const removeDraftPrompt = (index) => {
+    setDraftPrompts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateDraftPrompt = (index, value) => {
+    setDraftPrompts((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  };
+
+  const addDraftPrompt = () => {
+    const t = newPromptText.trim();
+    if (!t) return;
+    setDraftPrompts((prev) => [...prev, t]);
+    setNewPromptText('');
+  };
+
+  const handleRestoreInstantDefaults = () => {
+    setDraftPrompts([...DEFAULT_INSTANT_PROMPTS]);
+  };
+
+  const handleSaveInstantPrompts = () => {
+    savePrompts(draftPrompts);
+    setIsPromptManagerOpen(false);
+  };
+
+  const handleInstantSend = (text) => {
+    if (isApiKeyLoading || !hasApiKey || isLoading) return;
+    const messageToSend = buildOutgoingMessage(text);
+    if (!messageToSend) return;
+    sendMessage(messageToSend);
+  };
+
   // Get filtered commands based on input
   const getFilteredCommands = () => {
     // Always work from an alphabetically sorted list of commands
@@ -236,10 +317,39 @@ export default function ChatInterface({
   };
 
   const filteredCommands = getFilteredCommands();
+
+  const pendingFollowUpMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (
+        m.role === 'assistant' &&
+        Array.isArray(m.followUpOptions) &&
+        m.followUpOptions.length > 0 &&
+        !m.followUpResolved &&
+        !m.followUpOptionsReadOnly
+      ) {
+        return m;
+      }
+    }
+    return null;
+  }, [messages]);
+
+  useEffect(() => {
+    if (!pendingFollowUpMessage) {
+      setFollowUpSendError(null);
+    }
+  }, [pendingFollowUpMessage]);
+
+  const dismissFollowUpSendError = useCallback(() => {
+    setFollowUpSendError(null);
+  }, []);
+
   const inputPlaceholder = isApiKeyLoading
     ? 'Checking API key status...'
     : hasApiKey
-      ? 'Ask me anything... (type / for commands)'
+      ? pendingFollowUpMessage
+        ? 'Optional: extra context to send with your answers (type / for commands)'
+        : 'Ask me anything... (type / for commands)'
       : 'Set your OpenAI API key in Settings to start chatting.';
 
   // Update commands popup visibility based on input
@@ -272,38 +382,48 @@ export default function ChatInterface({
   const handleInputChange = (e) => {
     const value = e.target.value;
     setInputValue(value);
+    if (followUpSendError) {
+      setFollowUpSendError(null);
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (isApiKeyLoading || !hasApiKey) {
+    if (isApiKeyLoading || !hasApiKey || isLoading) {
       return;
     }
-    if (inputValue.trim() && !isLoading) {
-      let messageToSend = inputValue.trim();
-      
-      // Check if message starts with a command
-      if (messageToSend.startsWith('/')) {
-        const commandMatch = messageToSend.match(/^\/(\w+)(?:\s+(.+))?$/);
-        if (commandMatch) {
-          const [, commandName, userInput] = commandMatch;
-          const command = availableCommands.find(cmd => cmd.command === commandName);
-          if (command && userInput) {
-            // Prepend context prefix to user input
-            messageToSend = `${command.contextPrefix}${userInput}`;
-          } else if (command && !userInput) {
-            // If command is used without input, just send the command description as context
-            messageToSend = `${command.contextPrefix}${command.description}`;
-          }
-        }
+
+    const pending = pendingFollowUpMessage;
+    if (pending) {
+      const api = followUpComposeRef.current;
+      if (!api?.isValid()) {
+        setFollowUpSendError('Please answer each follow-up question before sending.');
+        return;
       }
-      
-      sendMessage(messageToSend);
+      setFollowUpSendError(null);
+      const followPart = api.compose();
+      const builtMain = inputValue.trim() ? buildOutgoingMessage(inputValue) : '';
+      const combined = [followPart, builtMain].filter(Boolean).join('\n\n');
+      if (!combined.trim()) return;
+
+      submitFollowUp(pending.id, combined);
       setInputValue('');
       setShowCommandsPopup(false);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+      return;
+    }
+
+    if (!inputValue.trim()) return;
+    const messageToSend = buildOutgoingMessage(inputValue);
+    if (!messageToSend) return;
+
+    sendMessage(messageToSend);
+    setInputValue('');
+    setShowCommandsPopup(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
     }
   };
 
@@ -371,7 +491,116 @@ export default function ChatInterface({
   return (
     <div className="flex flex-col h-full bg-surface shadow-[inset_0_0_30px_rgba(34,197,94,0.1)]">
       {/* Chat Header */}
-      <div className="px-4 py-3 flex items-center justify-end">
+      <div className="px-4 py-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={openPromptManager}
+          className="p-1 text-gray-300 hover:text-white hover:bg-surface-hover rounded-lg transition-colors duration-200 cursor-pointer"
+          title="Edit instant prompts"
+          aria-label="Edit instant prompts"
+        >
+          <ListPlus className="w-5.5 h-5.5" />
+        </button>
+        {isPromptManagerOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instant-prompts-dialog-title"
+          >
+            <div
+              className="absolute inset-0 bg-black/60 cursor-default"
+              onClick={() => setIsPromptManagerOpen(false)}
+              role="presentation"
+            />
+            <div className="relative w-full max-w-lg max-h-[90vh] flex justify-center items-start">
+              <div
+                className="relative w-full max-h-[90vh] overflow-y-auto bg-surface-elevated border border-divider rounded-xl shadow-[inset_0_0_30px_rgba(34,197,94,0.1),0_25px_50px_-12px_rgba(0,0,0,0.5)] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="sticky top-0 flex items-center justify-between px-5 py-4 border-b border-divider bg-surface-elevated z-10">
+                  <h2 id="instant-prompts-dialog-title" className="text-lg font-semibold text-white">
+                    Instant prompts
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsPromptManagerOpen(false)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
+                    aria-label="Close instant prompts"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="px-5 py-4 space-y-3 text-left">
+                  <p className="text-sm text-gray-400">
+                    One-tap suggestions on the welcome screen. Slash commands in a prompt are expanded the same as in the chat box.
+                  </p>
+                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                    {draftPrompts.map((line, index) => (
+                      <div key={`draft-${index}`} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={line}
+                          onChange={(e) => updateDraftPrompt(index, e.target.value)}
+                          className="flex-1 min-w-0 rounded-lg border border-divider bg-surface px-3 py-2 text-sm text-gray-200 focus:border-green-500 focus:outline-none"
+                          aria-label={`Prompt ${index + 1}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeDraftPrompt(index)}
+                          className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-surface-hover hover:text-red-400 cursor-pointer"
+                          aria-label={`Remove prompt ${index + 1}`}
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      type="text"
+                      value={newPromptText}
+                      onChange={(e) => setNewPromptText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addDraftPrompt();
+                        }
+                      }}
+                      placeholder="Add a new prompt…"
+                      className="flex-1 min-w-0 rounded-lg border border-divider bg-surface px-3 py-2 text-sm text-gray-200 focus:border-green-500 focus:outline-none"
+                      aria-label="New prompt text"
+                    />
+                    <button
+                      type="button"
+                      onClick={addDraftPrompt}
+                      className="flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-lg bg-green-600 text-white hover:bg-green-700 cursor-pointer"
+                      aria-label="Add prompt"
+                    >
+                      <Plus className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveInstantPrompts}
+                      className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 cursor-pointer"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRestoreInstantDefaults}
+                      className="rounded-lg border border-divider px-4 py-2 text-sm text-gray-300 hover:bg-surface-hover cursor-pointer"
+                    >
+                      Restore defaults
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="relative">
           <button
             type="button"
@@ -514,6 +743,31 @@ export default function ChatInterface({
                   Set your OpenAI API key in Settings to start chatting.
                 </p>
               )}
+              {instantPromptsLoaded && instantPrompts.length > 0 && (
+                <div className="mb-6 w-full max-w-xl text-left animate-slide-up">
+                  <p className="mb-3 text-sm font-medium text-gray-400">Try asking</p>
+                  <div className="flex flex-col gap-2">
+                    {instantPrompts.map((p, index) => {
+                      const instantDisabled = isApiKeyLoading || !hasApiKey || isLoading;
+                      return (
+                        <button
+                          key={`${index}-${p.slice(0, 48)}`}
+                          type="button"
+                          onClick={() => handleInstantSend(p)}
+                          disabled={instantDisabled}
+                          className={`w-full rounded-lg border px-4 py-3 text-left text-sm transition-all duration-200 ease-out ${
+                            instantDisabled
+                              ? 'border-divider text-gray-200 opacity-50 cursor-not-allowed'
+                              : 'border-divider text-gray-200 cursor-pointer hover:border-green-500/45 hover:bg-green-600/[0.08] hover:text-white hover:shadow-[0_0_28px_rgba(34,197,94,0.14)] active:scale-[0.99]'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-sm text-gray-500 animate-slide-up">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -541,12 +795,23 @@ export default function ChatInterface({
                 // Show loading indicator only if this is the last message and it's empty and we're loading
                 const isLastMessage = messages[messages.length - 1].id === message.id;
                 const showLoading = isLoading && isLastMessage && !message.content;
+                const isPendingFollowUpTarget =
+                  pendingFollowUpMessage?.id === message.id;
                 return (
                   <AssistantMessage
                     key={message.id}
                     message={message}
                     isLoading={showLoading}
                     onSaveChart={handleSaveChart}
+                    followUpComposeRef={
+                      isPendingFollowUpTarget ? followUpComposeRef : undefined
+                    }
+                    followUpExternalError={
+                      isPendingFollowUpTarget ? followUpSendError : null
+                    }
+                    onDismissFollowUpExternalError={
+                      isPendingFollowUpTarget ? dismissFollowUpSendError : undefined
+                    }
                   />
                 );
               } else if (message.role === 'system') {
@@ -625,7 +890,12 @@ export default function ChatInterface({
             ) : (
               <button
                 type="submit"
-                disabled={!inputValue.trim() || isLoading || isApiKeyLoading || !hasApiKey}
+                disabled={
+                  isLoading ||
+                  isApiKeyLoading ||
+                  !hasApiKey ||
+                  (!pendingFollowUpMessage && !inputValue.trim())
+                }
                 className="bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0 cursor-pointer"
                 style={{ height: '42px', width: '42px', padding: 0, boxSizing: 'border-box' }}
                 title="Send message"
@@ -637,7 +907,9 @@ export default function ChatInterface({
             )}
           </form>
           <div className="mt-2 text-xs text-gray-500 text-center">
-            Press Enter to send, Shift+Enter for new line
+            {pendingFollowUpMessage
+              ? 'Press Enter or the arrow to send your answers; add optional notes in the box above.'
+              : 'Press Enter to send, Shift+Enter for new line'}
           </div>
         </div>
       </div>

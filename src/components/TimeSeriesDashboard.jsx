@@ -114,7 +114,7 @@ export default function TimeSeriesDashboard() {
           {loading ? (
             <p className="text-sm text-gray-400">Loading charts...</p>
           ) : charts.length === 0 ? (
-            <div className="bg-surface-elevated border border-divider rounded-xl p-6 text-sm text-gray-400">
+            <div className="text-sm text-gray-400">
               No saved charts yet. Run a time-series tool with visualization in chat, then use Save to add charts here.
             </div>
           ) : (

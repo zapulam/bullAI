@@ -40,6 +40,10 @@ export const useChat = (initialSessionId = null) => {
           // Convert backend messages to frontend format
           // Filter out messages without content (these are tool calls, not actual messages)
           const messagesWithContent = data.messages.filter((msg) => {
+            // Allow assistant messages with follow-up options even if content is empty
+            if (msg.role === 'assistant' && Array.isArray(msg.options) && msg.options.length > 0) {
+              return true;
+            }
             // Allow assistant messages with visualization even if content is empty
             if (msg.role === 'assistant' && msg.visualization) {
               return true;
@@ -76,13 +80,11 @@ export const useChat = (initialSessionId = null) => {
           
           const formattedMessages = uniqueMessages
             .map((msg, index) => {
-              // Handle assistant messages where content might be a dict,
-              // list of dicts, or a JSON string with thought/response/status.
+              // Backend history returns string content plus optional thought/options.
               let content = msg.content;
               let thought = null;
 
               if (msg.role === 'assistant') {
-                // Preserve any thought field from backend history so UI can render it
                 if (msg.thought !== undefined && msg.thought !== null) {
                   if (typeof msg.thought === 'string') {
                     thought = msg.thought;
@@ -95,65 +97,11 @@ export const useChat = (initialSessionId = null) => {
                   }
                 }
 
-                // Fallback: if content is a JSON string that looks like structured
-                // output, split it into thought/response so it matches live chats.
-                if (!thought && typeof content === 'string') {
-                  const trimmed = content.trim();
-                  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                    try {
-                      const parsed = JSON.parse(trimmed);
-                      if (parsed && (parsed.thought || parsed.response || parsed.status)) {
-                        const parsedThought = parsed.thought;
-                        const parsedResponse = parsed.response;
-
-                        if (parsedThought !== undefined && parsedThought !== null) {
-                          if (typeof parsedThought === 'string') {
-                            thought = parsedThought;
-                          } else {
-                            try {
-                              thought = JSON.stringify(parsedThought);
-                            } catch {
-                              thought = String(parsedThought);
-                            }
-                          }
-                        }
-
-                        if (parsedResponse !== undefined && parsedResponse !== null) {
-                          if (typeof parsedResponse === 'string') {
-                            content = parsedResponse;
-                          } else {
-                            try {
-                              content = JSON.stringify(parsedResponse);
-                            } catch {
-                              content = String(parsedResponse);
-                            }
-                          }
-                        }
-                      }
-                    } catch {
-                      // Not valid JSON structured output; leave content as-is
-                    }
-                  }
-                }
-
-                if (Array.isArray(content) && content.length > 0) {
-                  // Handle list of dicts like [{"text": "...", ...}]
-                  const firstItem = content[0];
-                  if (typeof firstItem === 'object' && firstItem !== null) {
-                    content = firstItem.text || firstItem.content || '';
-                  } else {
-                    content = String(firstItem);
-                  }
-                } else if (typeof content === 'object' && content !== null) {
-                  // Extract text from dict structure like {'text': '...', ...}
-                  content = content.text || content.content || '';
-                } else if (typeof content !== 'string') {
-                  // Fallback: convert to string if it's not already a string
-                  content = String(content);
+                if (typeof content !== 'string') {
+                  content = '';
                 }
               } else if (typeof content !== 'string') {
-                // For non-assistant messages, convert to string if needed
-                content = String(content);
+                content = '';
               }
               
               // Use timestamp from backend if available; for historical messages
@@ -161,6 +109,11 @@ export const useChat = (initialSessionId = null) => {
               // the message was actually created.
               const timestamp = msg.timestamp || msg.created_at || msg.time || null;
               
+              const historyOptions =
+                msg.role === 'assistant' && Array.isArray(msg.options) && msg.options.length > 0
+                  ? msg.options.map((o) => (typeof o === 'object' && o !== null ? { ...o } : o))
+                  : null;
+
               return {
                 id: `${msg.role}-${initialSessionId}-${index}`,
                 role: msg.role,
@@ -169,6 +122,14 @@ export const useChat = (initialSessionId = null) => {
                 ...(msg.role === 'assistant' && thought ? { thought } : {}),
                 // Pass through visualization from backend for history messages
                 ...(msg.visualization ? { visualization: msg.visualization } : {}),
+                ...(historyOptions
+                  ? {
+                      followUpOptions: historyOptions,
+                      followUpResolved: true,
+                      // History is never interactive; backend also sends follow_up_options_read_only.
+                      followUpOptionsReadOnly: msg.follow_up_options_read_only !== false,
+                    }
+                  : {}),
                 // Mark history messages so the UI can show date+time formatting
                 isHistory: true,
                 timestamp: timestamp,
@@ -176,10 +137,14 @@ export const useChat = (initialSessionId = null) => {
               };
             })
             .filter((msg) => {
-              // Final filter: keep messages with content, or assistant messages with visualization
+              // Final filter: keep messages with content, or assistant with visualization / follow-ups
               const hasContent = msg.content && typeof msg.content === 'string' && msg.content.trim().length > 0;
               const hasViz = msg.role === 'assistant' && msg.visualization;
-              return hasContent || hasViz;
+              const hasFollowUp =
+                msg.role === 'assistant' &&
+                Array.isArray(msg.followUpOptions) &&
+                msg.followUpOptions.length > 0;
+              return hasContent || hasViz || hasFollowUp;
             });
           setMessages(formattedMessages);
         })
@@ -302,24 +267,42 @@ export const useChat = (initialSessionId = null) => {
                     ? { ...msg, content: accumulatedResponse }
                     : msg
                 ));
-              } else if (data.type === 'chunk') {
-                // Backwards compatibility: treat generic chunks as response text
-                accumulatedResponse += data.content;
-                accumulatedContent = accumulatedResponse;
-                setMessages(prev => prev.map(msg =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, content: accumulatedResponse }
-                    : msg
-                ));
+              } else if (data.type === 'options') {
+                const list = Array.isArray(data.content)
+                  ? data.content.map((x) =>
+                      typeof x === 'object' && x !== null ? { ...x } : x
+                    )
+                  : [];
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId ? { ...msg, followUpOptions: list } : msg
+                  )
+                );
               } else if (data.type === 'complete') {
                 // Final update with complete thought/response content
                 const finalThought = data.thought || accumulatedThought;
-                const finalResponse = data.response || data.content || accumulatedResponse || accumulatedContent;
-                setMessages(prev => prev.map(msg =>
-                  msg.id === assistantMessageId
-                    ? { ...msg, thought: finalThought, content: finalResponse }
-                    : msg
-                ));
+                const finalResponse = data.response || accumulatedResponse || accumulatedContent;
+                setMessages((prev) =>
+                  prev.map((msg) => {
+                    if (msg.id !== assistantMessageId) return msg;
+                    const next = {
+                      ...msg,
+                      thought: finalThought,
+                      content: finalResponse,
+                    };
+                    if (data.options !== undefined && data.options !== null) {
+                      next.followUpOptions = Array.isArray(data.options)
+                        ? data.options.map((x) =>
+                            typeof x === 'object' && x !== null ? { ...x } : x
+                          )
+                        : [];
+                    }
+                    if (data.status !== undefined && data.status !== null) {
+                      next.outputStatus = data.status;
+                    }
+                    return next;
+                  })
+                );
               } else if (data.type === 'error') {
                 throw new Error(data.content || 'Unknown error occurred');
               } else if (data.type === 'tool_call' || data.type === 'tool_output' || data.type === 'agent_update') {
@@ -373,6 +356,20 @@ export const useChat = (initialSessionId = null) => {
     }
   }, [isLoading, messages, sessionId]);
 
+  const submitFollowUp = useCallback(
+    (assistantMessageId, text) => {
+      const trimmed = String(text).trim();
+      if (!trimmed || isLoading) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId ? { ...m, followUpResolved: true } : m
+        )
+      );
+      sendMessage(trimmed);
+    },
+    [isLoading, sendMessage]
+  );
+
   const cancelRequest = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -402,6 +399,7 @@ export const useChat = (initialSessionId = null) => {
     isLoading,
     error,
     sendMessage,
+    submitFollowUp,
     cancelRequest,
     clearChat,
     retryLastMessage,

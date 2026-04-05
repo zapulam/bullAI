@@ -4,7 +4,6 @@ bullAI Internal Chat - FastAPI application.
 Written by: zapulam
 """
 
-import ast
 import os
 import json
 import uuid
@@ -46,7 +45,6 @@ from repositories import ChartRepository, SettingsRepository
 from settings import settings
 from tools import execute_chart_call
 from streaming import (
-    ChatChunkEvent,
     ChatToolInput,
     ChatToolOutput,
     ChatComplete,
@@ -189,8 +187,7 @@ async def create_chat(
                 if chunk.get("type") == "chunk":
                     delta = chunk.get("content", "")
                     for evt in parser.feed(delta):
-                        event = ChatChunkEvent(type=evt.field, content=evt.text)
-                        yield f"data: {event.model_dump_json()}\n\n"
+                        yield f"data: {evt.model_dump_json()}\n\n"
 
                 elif chunk.get("type") == "tool_output":
                     tool_output_content = chunk.get("content", "")
@@ -212,6 +209,7 @@ async def create_chat(
                     thought = parser.thought
                     response = parser.response
                     status = None
+                    options_out: Optional[List[Dict[str, Any]]] = None
 
                     try:
                         content_json = json.loads(content_str)
@@ -219,14 +217,23 @@ async def create_chat(
                             thought = content_json.get("thought", thought) or thought
                             response = content_json.get("response", response) or response
                             status = content_json.get("status", status) or status
+                            raw_opts = content_json.get("options")
+                            if isinstance(raw_opts, list):
+                                options_out = [
+                                    x for x in raw_opts if isinstance(x, dict)
+                                ]
                     except json.JSONDecodeError:
                         pass
+
+                    if options_out is None and parser.options:
+                        options_out = list(parser.options)
 
                     event = ChatComplete(
                         type="complete",
                         conversation_id=conversation_id,
                         thought=thought,
                         response=response,
+                        options=options_out,
                         status=status or "complete",
                     )
                     yield f"data: {event.model_dump_json()}\n\n"
@@ -415,36 +422,23 @@ async def get_chat_history(
     messages = []
     pending_visualization = None
     for item in items:
-        created_at = None
-        if isinstance(item, dict) and "data" in item:
-            raw = item.get("data") or {}
-            created_at = item.get("created_at")
-        else:
-            raw = item
-
-        if isinstance(raw, dict):
-            role = raw.get("role", "user")
-            content = raw.get("content", "")
-        else:
-            role = getattr(raw, "role", "user")
-            content = getattr(raw, "content", "")
-            created_at = created_at or getattr(raw, "created_at", None)
+        if not isinstance(item, dict) or "data" not in item:
+            continue
+        raw = item.get("data") or {}
+        created_at = item.get("created_at")
+        if not isinstance(raw, dict):
+            continue
+        role = raw.get("role", "user")
+        content = raw.get("content", "")
 
         # Tool output items: extract visualization for next assistant message.
-        # Agents SDK stores with type="function_call_output" and output (string).
         if raw.get("type") == "function_call_output":
             output_raw = raw.get("output", raw.get("content", ""))
             parsed = None
             if isinstance(output_raw, dict) and "visualization" in output_raw:
                 parsed = output_raw
             elif isinstance(output_raw, str) and output_raw.strip():
-                try:
-                    parsed = json.loads(output_raw)
-                except json.JSONDecodeError:
-                    try:
-                        parsed = ast.literal_eval(output_raw)
-                    except (ValueError, SyntaxError):
-                        parsed = None
+                parsed = json.loads(output_raw)
             if isinstance(parsed, dict) and "visualization" in parsed:
                 pending_visualization = parsed.get("visualization")
             continue
@@ -455,96 +449,33 @@ async def get_chat_history(
         if raw.get("type") in ("reasoning", "function_call"):
             continue
 
-        thought = None
-        status = None
-
-        # Handle assistant messages where content might be a structured Output,
-        # or legacy text/list/dict structures.
         if role == "assistant":
-            # First, try to interpret content as structured Output with thought/response/status
-            structured = None
-
-            if isinstance(content, dict) and (
-                "thought" in content or "response" in content or "status" in content
-            ):
-                structured = content
-            elif isinstance(content, str):
-                # Try to parse JSON string into structured dict
-                try:
-                    parsed = json.loads(content)
-                    if isinstance(parsed, dict) and (
-                        "thought" in parsed or "response" in parsed or "status" in parsed
-                    ):
-                        structured = parsed
-                except Exception:
-                    structured = None
-
-            if structured is not None:
-                # Extract structured fields
-                thought_val = structured.get("thought")
-                response_val = structured.get("response")
-                status_val = structured.get("status")
-
-                thought = (
-                    thought_val
-                    if isinstance(thought_val, str)
-                    else (json.dumps(thought_val) if thought_val is not None else None)
-                )
-                # Response/content shown to user
-                if isinstance(response_val, str):
-                    content = response_val
-                elif response_val is not None:
-                    content = json.dumps(response_val)
-                else:
-                    # Fallback to empty string if response is missing
-                    content = ""
-
-                if isinstance(status_val, str):
-                    status = status_val
-                elif status_val is not None:
-                    status = str(status_val)
-            else:
-                # Legacy handling: content as list/dict with 'text' field or other types
-                if isinstance(content, list) and len(content) > 0:
-                    # Handle list of dicts like [{"text": "...", ...}]
-                    first_item = content[0]
-                    if isinstance(first_item, dict):
-                        content = first_item.get("text", "")
-                    else:
-                        content = str(first_item)
-                elif isinstance(content, dict):
-                    # Extract text from dict structure like {'text': '...', 'annotations': ..., 'type': ..., 'logprobs': ...}
-                    content = content.get("text", "")
-                elif not isinstance(content, str):
-                    # Fallback: convert to string if it's not already a string
-                    content = str(content)
-        elif not isinstance(content, str):
-            # For non-assistant messages, convert to string if needed
-            content = str(content)
-        
-        message_data: Dict[str, Any] = {
-            "role": role,
-            "content": content,
-        }
-
-        # Prefer the stored created_at as the canonical timestamp for history
-        if created_at is not None:
-            message_data["created_at"] = created_at
-            # Also expose it as a generic timestamp field for frontend convenience
-            message_data["timestamp"] = created_at
-
-        # Only attach thought/status for assistant messages when present so
-        # the frontend can render them like live streamed chats.
-        if role == "assistant":
-            if thought is not None and str(thought).strip():
-                message_data["thought"] = thought
-            if status is not None:
-                message_data["status"] = status
+            payload = json.loads(content[0]["text"])
+            message_data: Dict[str, Any] = {
+                "role": "assistant",
+                "content": payload["response"],
+                "created_at": created_at,
+                "timestamp": created_at,
+                "thought": payload["thought"],
+                "status": payload["status"],
+            }
+            opts = payload.get("options")
+            if opts:
+                message_data["options"] = opts
+                message_data["follow_up_options_read_only"] = True
             if pending_visualization is not None:
                 message_data["visualization"] = pending_visualization
                 pending_visualization = None
-
-        messages.append(message_data)
+            messages.append(message_data)
+        else:
+            messages.append(
+                {
+                    "role": role,
+                    "content": content,
+                    "created_at": created_at,
+                    "timestamp": created_at,
+                }
+            )
     
     return {"messages": messages}
 

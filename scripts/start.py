@@ -11,6 +11,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 
 from pathlib import Path
 
@@ -18,6 +20,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = REPO_ROOT / "backend"
 VENV_DIR = REPO_ROOT / ".venv"
+
+BACKEND_HEALTH_URL = "http://127.0.0.1:5000/health"
+BACKEND_READY_POLL_SEC = 0.35
+BACKEND_HEALTH_OPEN_TIMEOUT_SEC = 2
 
 # ANSI for terminal colors
 GREEN = "\033[32m"
@@ -107,6 +113,23 @@ def relay_output(pipe, prefix, lock, color=None):
         pass
 
 
+def wait_for_backend_ready(backend_proc):
+    """Block until /health returns 200; raise if the backend process dies first."""
+    while True:
+        if backend_proc.poll() is not None:
+            raise RuntimeError("Backend process exited before it became ready.")
+        try:
+            with urllib.request.urlopen(
+                BACKEND_HEALTH_URL,
+                timeout=BACKEND_HEALTH_OPEN_TIMEOUT_SEC,
+            ) as resp:
+                if resp.status == 200:
+                    return
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
+        time.sleep(BACKEND_READY_POLL_SEC)
+
+
 def main():
     venv_python = get_venv_python()
     if not venv_python.exists():
@@ -133,6 +156,21 @@ def main():
         daemon=True,
     )
     backend_relay.start()
+
+    try:
+        with output_lock:
+            print("Waiting for backend (GET /health)...")
+            sys.stdout.flush()
+        wait_for_backend_ready(backend_proc)
+        with output_lock:
+            print("Backend is ready.")
+            sys.stdout.flush()
+    except RuntimeError as exc:
+        with output_lock:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.stderr.flush()
+        stop_process(backend_proc)
+        raise SystemExit(1) from exc
 
     with output_lock:
         print("Starting frontend...")

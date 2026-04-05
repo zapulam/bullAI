@@ -5,43 +5,93 @@ export const useChatSessions = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const fetchingRef = useRef(false);
+  const inFlightRef = useRef(0);
+  const manualAbortRef = useRef(null);
 
-  const fetchSessions = useCallback(async () => {
-    // Prevent duplicate concurrent calls (e.g., from React StrictMode)
-    if (fetchingRef.current) {
-      return;
+  const beginFetch = useCallback(() => {
+    inFlightRef.current += 1;
+    setLoading(true);
+  }, []);
+
+  const endFetch = useCallback(() => {
+    inFlightRef.current = Math.max(0, inFlightRef.current - 1);
+    if (inFlightRef.current === 0) {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadSessions = useCallback(async (signal) => {
+    const url = buildApiUrl(API_ENDPOINTS.CHAT_SESSIONS);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    fetchingRef.current = true;
-    setLoading(true);
-    setError(null);
+    const data = await response.json();
+    return data.sessions || [];
+  }, []);
 
-    try {
-      const url = buildApiUrl(API_ENDPOINTS.CHAT_SESSIONS);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+  useEffect(() => {
+    const ac = new AbortController();
+    let cancelled = false;
+
+    beginFetch();
+    setError(null);
+    loadSessions(ac.signal)
+      .then((list) => {
+        if (cancelled) return;
+        setSessions(list);
+      })
+      .catch((err) => {
+        if (cancelled || err.name === 'AbortError') return;
+        console.error('Error fetching sessions:', err);
+        setError(err.message);
+        setSessions([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          endFetch();
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+    return () => {
+      cancelled = true;
+      ac.abort();
+      endFetch();
+    };
+  }, [beginFetch, endFetch, loadSessions]);
 
-      const data = await response.json();
-      setSessions(data.sessions || []);
+  const fetchSessions = useCallback(async () => {
+    manualAbortRef.current?.abort();
+    const ac = new AbortController();
+    manualAbortRef.current = ac;
+
+    beginFetch();
+    setError(null);
+    try {
+      const list = await loadSessions(ac.signal);
+      if (!ac.signal.aborted) {
+        setSessions(list);
+      }
     } catch (err) {
+      if (err.name === 'AbortError' || ac.signal.aborted) return;
       console.error('Error fetching sessions:', err);
       setError(err.message);
       setSessions([]);
     } finally {
-      setLoading(false);
-      fetchingRef.current = false;
+      if (manualAbortRef.current === ac) {
+        manualAbortRef.current = null;
+      }
+      endFetch();
     }
-  }, []);
+  }, [beginFetch, endFetch, loadSessions]);
 
   const deleteSession = useCallback(async (conversationId) => {
     const url = buildApiUrl(`${API_ENDPOINTS.CHAT_SESSION_DELETE}/${conversationId}`);
@@ -52,10 +102,6 @@ export const useChatSessions = () => {
     await fetchSessions();
   }, [fetchSessions]);
 
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
   return {
     sessions,
     loading,
@@ -64,4 +110,3 @@ export const useChatSessions = () => {
     deleteSession,
   };
 };
-

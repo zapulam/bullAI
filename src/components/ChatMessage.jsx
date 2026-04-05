@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import VizChart from './VizChart';
@@ -49,6 +49,223 @@ const formatTimeFromTimestamp = (rawTimestamp, isHistory = false) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+function buildFollowUpReply(steps, openText, choiceSingle, choiceMulti, otherText) {
+  const blocks = [];
+  steps.forEach((step, i) => {
+    const n = i + 1;
+    if (step.type === 'choice_question') {
+      let picked = [];
+      if (step.allow_multiple) {
+        picked = [...(choiceMulti[i] || [])];
+      } else if (choiceSingle[i]) {
+        picked = [choiceSingle[i]];
+      }
+      const parts = [...picked];
+      const ot = (otherText[i] || '').trim();
+      if (step.allow_other && ot) {
+        parts.push(`Other: ${ot}`);
+      }
+      blocks.push(`${n}) ${parts.join('; ')}`);
+    } else {
+      blocks.push(`${n}) ${(openText[i] || '').trim()}`);
+    }
+  });
+  return blocks.join('\n\n');
+}
+
+function followUpFormIsValid(steps, openText, choiceSingle, choiceMulti, otherText) {
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (step.type === 'choice_question') {
+      const hasMulti = step.allow_multiple && (choiceMulti[i] || []).length > 0;
+      const hasSingle = !step.allow_multiple && choiceSingle[i];
+      const hasOther = step.allow_other && (otherText[i] || '').trim();
+      if (!hasMulti && !hasSingle && !hasOther) {
+        return false;
+      }
+    } else {
+      if (!(openText[i] || '').trim()) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+const FollowUpOptionsForm = forwardRef(function FollowUpOptionsForm(
+  { messageId, steps, externalError, onDismissExternalError },
+  ref
+) {
+  const [openText, setOpenText] = useState({});
+  const [choiceSingle, setChoiceSingle] = useState({});
+  const [choiceMulti, setChoiceMulti] = useState({});
+  const [otherText, setOtherText] = useState({});
+
+  const dismissExternal = useCallback(() => {
+    onDismissExternalError?.();
+  }, [onDismissExternalError]);
+
+  useEffect(() => {
+    setOpenText({});
+    setChoiceSingle({});
+    setChoiceMulti({});
+    setOtherText({});
+  }, [messageId]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      compose: () => buildFollowUpReply(steps, openText, choiceSingle, choiceMulti, otherText),
+      isValid: () => followUpFormIsValid(steps, openText, choiceSingle, choiceMulti, otherText),
+    }),
+    [steps, openText, choiceSingle, choiceMulti, otherText]
+  );
+
+  const toggleMulti = (index, label) => {
+    dismissExternal();
+    setChoiceMulti((prev) => {
+      const cur = prev[index] || [];
+      const has = cur.includes(label);
+      const next = has ? cur.filter((x) => x !== label) : [...cur, label];
+      return { ...prev, [index]: next };
+    });
+  };
+
+  const choiceChipClass = (selected) =>
+    `w-full text-left text-sm px-3 py-2.5 rounded-lg border transition-colors cursor-pointer ${
+      selected
+        ? 'bg-green-600/20 text-gray-50 border-green-500/45 ring-1 ring-green-500/20'
+        : 'text-gray-300 border-divider/80 hover:border-green-500/45 hover:bg-green-600/10 hover:text-gray-100'
+    }`;
+
+  return (
+    <div className="mt-3 w-full max-w-full text-left space-y-2">
+      {steps.map((step, i) => {
+        const prompt = typeof step.prompt === 'string' ? step.prompt : '';
+        const choices = Array.isArray(step.choices) ? step.choices : [];
+
+        return (
+          <div key={i} className="space-y-2.5">
+            <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{prompt}</div>
+
+            {step.type === 'choice_question' && (
+              <div className="space-y-1.5">
+                {step.allow_multiple
+                  ? choices.map((c) => {
+                      const selected = (choiceMulti[i] || []).includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleMulti(i, c)}
+                          className={choiceChipClass(selected)}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })
+                  : choices.map((c) => {
+                      const selected = choiceSingle[i] === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            dismissExternal();
+                            setChoiceSingle((prev) => ({ ...prev, [i]: c }));
+                          }}
+                          className={choiceChipClass(selected)}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                {step.allow_other && (
+                  <textarea
+                    value={otherText[i] || ''}
+                    onChange={(e) => {
+                      dismissExternal();
+                      setOtherText((prev) => ({ ...prev, [i]: e.target.value }));
+                    }}
+                    rows={1}
+                    className={`w-full rounded-lg px-3 py-2.5 text-sm leading-5 text-gray-100 resize-y min-h-[2.5rem] max-h-48 transition-colors bg-transparent border box-border ${
+                      (otherText[i] || '').trim()
+                        ? 'border-green-500/40 bg-green-600/10 ring-1 ring-green-500/20'
+                        : 'border-divider/80 hover:border-green-500/45 hover:bg-green-600/5'
+                    } placeholder:text-gray-500`}
+                    placeholder="Other"
+                  />
+                )}
+              </div>
+            )}
+
+            {(step.type === 'open_question' || step.type !== 'choice_question') && (
+              <textarea
+                value={openText[i] || ''}
+                onChange={(e) => {
+                  dismissExternal();
+                  setOpenText((prev) => ({ ...prev, [i]: e.target.value }));
+                }}
+                rows={3}
+                className="w-full rounded-lg bg-transparent border border-divider/80 hover:border-green-500/45 hover:bg-green-600/5 focus:border-green-500/35 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 resize-y min-h-[4rem] focus:outline-none focus:ring-1 focus:ring-green-500/25"
+                placeholder="Your answer…"
+              />
+            )}
+          </div>
+        );
+      })}
+
+      {externalError && (
+        <p className="text-xs text-amber-400/90 pt-1">{externalError}</p>
+      )}
+    </div>
+  );
+});
+
+const followUpReadOnlyChoiceClass =
+  'w-full text-left text-sm px-3 py-2.5 rounded-lg border text-gray-300 border-divider/80';
+
+function FollowUpOptionsReadOnlyRecap({ steps }) {
+  if (!Array.isArray(steps) || steps.length === 0) return null;
+
+  return (
+    <div className="mt-3 w-full max-w-full text-left space-y-2">
+      <p className="text-xs text-gray-500">From earlier in this conversation</p>
+      {steps.map((step, i) => {
+        const prompt = typeof step.prompt === 'string' ? step.prompt : '';
+        const choices = Array.isArray(step.choices) ? step.choices : [];
+
+        return (
+          <div key={i} className="space-y-2.5">
+            <div className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">{prompt}</div>
+
+            {step.type === 'choice_question' && (
+              <div className="space-y-1.5">
+                {choices.map((c) => (
+                  <div key={c} className={followUpReadOnlyChoiceClass}>
+                    {c}
+                  </div>
+                ))}
+                {step.allow_other && (
+                  <div
+                    className={`${followUpReadOnlyChoiceClass} text-gray-500 min-h-[2.5rem] flex items-center box-border`}
+                  >
+                    Other
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(step.type === 'open_question' || step.type !== 'choice_question') && (
+              <div className="w-full rounded-lg bg-transparent border border-divider/80 px-3 py-2 text-sm min-h-[4rem] box-border" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function UserMessage({ message }) {
   // Safely extract and format timestamp - ensure it's only rendered once
   const formatTimestamp = React.useMemo(() => {
@@ -85,10 +302,23 @@ export function UserMessage({ message }) {
   );
 }
 
-export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
-  const statusEvents = message.statusEvents || [];
+export function AssistantMessage({
+  message,
+  isLoading = false,
+  onSaveChart,
+  followUpComposeRef,
+  followUpExternalError,
+  onDismissFollowUpExternalError,
+}) {
+  const statusEvents = React.useMemo(
+    () => message.statusEvents || [],
+    [message.statusEvents]
+  );
+  const toolCallEvents = React.useMemo(
+    () => statusEvents.filter((e) => e.type === 'tool_call'),
+    [statusEvents]
+  );
   const [isStatusExpanded, setIsStatusExpanded] = useState(false);
-  const [expandedEvents, setExpandedEvents] = useState(new Set());
   const thought = message.thought || '';
   const hasResponse = !!message.content;
   const [isThoughtExpanded, setIsThoughtExpanded] = useState(!hasResponse);
@@ -109,30 +339,6 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
       setIsThoughtExpanded(false);
     }
   }, [hasResponse]);
-
-  // Truncate content to first 5 lines
-  const truncateToLines = (content, maxLines = 5) => {
-    if (!content) return { truncated: '', full: '', lineCount: 0 };
-    const lines = content.split('\n');
-    const lineCount = lines.length;
-    if (lineCount <= maxLines) {
-      return { truncated: content, full: content, lineCount };
-    }
-    const truncated = lines.slice(0, maxLines).join('\n');
-    return { truncated, full: content, lineCount };
-  };
-
-  const toggleEventExpansion = (index) => {
-    setExpandedEvents(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
-      }
-      return newSet;
-    });
-  };
 
   const parseNestedJson = (obj) => {
     if (obj === null || obj === undefined) return obj;
@@ -182,43 +388,9 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
   };
 
   const latestToolCall = React.useMemo(
-    () => statusEvents.filter((e) => e.type === 'tool_call').pop(),
-    [statusEvents]
+    () => toolCallEvents[toolCallEvents.length - 1],
+    [toolCallEvents]
   );
-
-  // Recursively unescape and format nested JSON strings
-  const unescapeAndFormatJSON = (obj) => {
-    if (typeof obj === 'string') {
-      // Try to parse as JSON and recursively format
-      try {
-        const parsed = JSON.parse(obj);
-        return unescapeAndFormatJSON(parsed);
-      } catch (e) {
-        // Not JSON, return as-is
-        return obj;
-      }
-    } else if (Array.isArray(obj)) {
-      return obj.map(item => unescapeAndFormatJSON(item));
-    } else if (typeof obj === 'object' && obj !== null) {
-      const formatted = {};
-      for (const [key, value] of Object.entries(obj)) {
-        formatted[key] = unescapeAndFormatJSON(value);
-      }
-      return formatted;
-    }
-    return obj;
-  };
-
-  const parseJsonIfString = (value) => {
-    if (typeof value !== 'string') {
-      return null;
-    }
-    try {
-      return JSON.parse(value);
-    } catch (e) {
-      return null;
-    }
-  };
 
   const extractVisualization = (content) => {
     if (!content || typeof content !== 'object') return null;
@@ -236,96 +408,28 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
     return null;
   }, [message.visualization, statusEvents]);
 
-  // Format JSON content for display
-  const formatContent = (content, eventType) => {
-    if (eventType !== 'tool_output') {
-      return content;
-    }
+  const getStatusIcon = () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
 
-    let contentToFormat = content;
-    if (content && typeof content === 'object' && content.timeSeries && content.raw !== undefined) {
-      contentToFormat = content.raw;
-    }
-    
-    // Handle string content
-    if (typeof contentToFormat === 'string') {
-      // Remove "Tool output: " prefix if present
-      if (contentToFormat.startsWith('Tool output: ')) {
-        contentToFormat = contentToFormat.substring('Tool output: '.length);
-      }
-      
-      // Try to parse as JSON
-      try {
-        const parsed = JSON.parse(contentToFormat);
-        // Recursively unescape nested JSON strings
-        const unescaped = unescapeAndFormatJSON(parsed);
-        return JSON.stringify(unescaped, null, 2);
-      } catch (e) {
-        // If parsing fails, check if it's already an object stringified
-        // Try to parse the original content
-        try {
-          const parsed = JSON.parse(contentToFormat);
-          const unescaped = unescapeAndFormatJSON(parsed);
-          return JSON.stringify(unescaped, null, 2);
-        } catch (e2) {
-          // Not JSON, return original
-          return content;
-        }
-      }
-    }
-    
-    // Handle object content
-    if (typeof contentToFormat === 'object' && contentToFormat !== null) {
-      try {
-        // Recursively unescape nested JSON strings
-        const unescaped = unescapeAndFormatJSON(contentToFormat);
-        return JSON.stringify(unescaped, null, 2);
-      } catch (e) {
-        return String(contentToFormat);
-      }
-    }
-    
-    return content;
-  };
-  
-  const getStatusIcon = (type) => {
-    switch (type) {
-      case 'tool_call':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        );
-      case 'tool_output':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
-      case 'agent_update':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-          </svg>
-        );
-      default:
-        return null;
-    }
-  };
+  const toolCallRowClass =
+    'text-green-400 bg-green-500/10 border-green-500/20';
 
-  const getStatusColor = (type) => {
-    switch (type) {
-      case 'tool_call':
-        return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'tool_output':
-        return 'text-green-400 bg-green-500/10 border-green-500/20';
-      case 'agent_update':
-        return 'text-purple-400 bg-purple-500/10 border-purple-500/20';
-      default:
-        return 'text-gray-400 bg-gray-500/10 border-gray-500/20';
-    }
-  };
+  const followUpSteps = message.followUpOptions;
+  const showFollowUpReadOnly =
+    Array.isArray(followUpSteps) &&
+    followUpSteps.length > 0 &&
+    message.followUpOptionsReadOnly;
+  const showFollowUp =
+    Array.isArray(followUpSteps) &&
+    followUpSteps.length > 0 &&
+    !message.followUpResolved &&
+    !message.followUpOptionsReadOnly &&
+    !isLoading &&
+    followUpComposeRef != null;
 
   return (
     <div className="flex justify-start mb-4 animate-fade-in chat-font">
@@ -376,10 +480,15 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                   const details = getToolCallDetails(latestToolCall);
                   return (
                     <div className="mt-3">
-                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
-                        {getStatusIcon('tool_call')}
-                        <div className="flex flex-col text-left min-w-0">
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${toolCallRowClass} animate-fade-in`}>
+                        {getStatusIcon()}
+                        <div className="flex flex-col text-left min-w-0 max-w-full">
                           <span className="text-gray-200">Tool called: {details.toolName}</span>
+                          {details.argsPretty && (
+                            <pre className="mt-1 max-h-48 max-w-full overflow-auto text-xs font-mono whitespace-pre-wrap break-words text-gray-300 border-t border-green-500/20 pt-1">
+                              <code className="text-gray-300">{details.argsPretty}</code>
+                            </pre>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -481,10 +590,15 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                   const details = getToolCallDetails(latestToolCall);
                   return (
                     <div className="mt-3">
-                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${getStatusColor('tool_call')} animate-fade-in`}>
-                        {getStatusIcon('tool_call')}
-                        <div className="flex flex-col text-left min-w-0">
+                      <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit max-w-full ${toolCallRowClass} animate-fade-in`}>
+                        {getStatusIcon()}
+                        <div className="flex flex-col text-left min-w-0 max-w-full">
                           <span className="text-gray-200">Tool called: {details.toolName}</span>
+                          {details.argsPretty && (
+                            <pre className="mt-1 max-h-48 max-w-full overflow-auto text-xs font-mono whitespace-pre-wrap break-words text-gray-300 border-t border-green-500/20 pt-1">
+                              <code className="text-gray-300">{details.argsPretty}</code>
+                            </pre>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -493,16 +607,28 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
               </>
             )}
           </div>
+          {showFollowUpReadOnly && (
+            <FollowUpOptionsReadOnlyRecap steps={followUpSteps} />
+          )}
+          {showFollowUp && (
+            <FollowUpOptionsForm
+              ref={followUpComposeRef}
+              messageId={message.id}
+              steps={followUpSteps}
+              externalError={followUpExternalError}
+              onDismissExternalError={onDismissFollowUpExternalError}
+            />
+          )}
           {message.content && assistantTimestamp && (
             <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-gray-400">
                 {assistantTimestamp}
               </span>
-              {statusEvents.length > 0 && (
+              {toolCallEvents.length > 0 && (
                 <button
                   onClick={() => setIsStatusExpanded(!isStatusExpanded)}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1 cursor-pointer"
-                  title={isStatusExpanded ? 'Hide details' : 'Show details'}
+                  title={isStatusExpanded ? 'Hide tool calls' : 'Show tool calls'}
                 >
                   <svg 
                     className={`w-3 h-3 transition-transform ${isStatusExpanded ? 'rotate-180' : ''}`} 
@@ -512,75 +638,31 @@ export function AssistantMessage({ message, isLoading = false, onSaveChart }) {
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
-                  <span>{statusEvents.length} {statusEvents.length === 1 ? 'action' : 'actions'}</span>
+                  <span>
+                    {toolCallEvents.length} {toolCallEvents.length === 1 ? 'tool' : 'tools'}
+                  </span>
                 </button>
               )}
             </div>
           )}
-          {isStatusExpanded && statusEvents.length > 0 && message.content && (
-            <div className="mt-2 space-y-1.5 animate-fade-in flex flex-col">
-              {statusEvents.map((event, index) => {
-                if (event.type === 'tool_call') {
-                  const details = getToolCallDetails(event);
-                  return (
-                    <div
-                      key={index}
-                      className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit ${getStatusColor(event.type)}`}
-                    >
-                      <div className="flex-shrink-0 mt-0.5">
-                        {getStatusIcon(event.type)}
-                      </div>
-                      <div className="flex flex-col text-left">
-                        <span className="text-gray-200">Tool called: {details.toolName}</span>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const formattedContent = formatContent(event.content, event.type);
-                // Check if content is JSON: either it's an object, or it's a formatted string that looks like JSON
-                const isJSON = event.type === 'tool_output' && (
-                  (typeof event.content === 'object' && event.content !== null) ||
-                  (typeof formattedContent === 'string' && 
-                   (formattedContent.trim().startsWith('{') || formattedContent.trim().startsWith('[')))
-                );
-                
-                const { truncated, full, lineCount } = truncateToLines(formattedContent);
-                const isExpanded = expandedEvents.has(index);
-                const shouldTruncate = lineCount > 5;
-                const displayContent = shouldTruncate && !isExpanded ? truncated : full;
-                
+          {isStatusExpanded && toolCallEvents.length > 0 && message.content && (
+            <div className="mt-2 space-y-1.5 animate-fade-in flex flex-col items-start">
+              {toolCallEvents.map((event, index) => {
+                const details = getToolCallDetails(event);
                 return (
                   <div
-                    key={index}
-                    className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-fit ${getStatusColor(event.type)}`}
+                    key={`${details.toolName}-${index}`}
+                    className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs w-full max-w-full ${toolCallRowClass}`}
                   >
                     <div className="flex-shrink-0 mt-0.5">
-                      {getStatusIcon(event.type)}
+                      {getStatusIcon()}
                     </div>
-                    <div className="flex flex-col">
-                      {isJSON ? (
-                        <pre className="overflow-x-auto text-xs font-mono whitespace-pre-wrap break-words text-left">
-                          <code className="text-gray-100">{displayContent}</code>
+                    <div className="flex flex-col text-left min-w-0 flex-1">
+                      <span className="text-gray-200">Tool called: {details.toolName}</span>
+                      {details.argsPretty && (
+                        <pre className="mt-1 max-h-48 max-w-full overflow-x-auto overflow-y-auto text-xs font-mono whitespace-pre-wrap break-words text-gray-300 border-t border-green-500/20 pt-1">
+                          <code className="text-gray-300">{details.argsPretty}</code>
                         </pre>
-                      ) : (
-                        <span className="break-words text-left">{displayContent}</span>
-                      )}
-                      {shouldTruncate && (
-                        <button
-                          onClick={() => toggleEventExpansion(index)}
-                          className="mt-2 text-xs text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1 self-start"
-                        >
-                          <svg 
-                            className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                          <span>{isExpanded ? 'Show less' : `Show ${lineCount - 5} more line${lineCount - 5 === 1 ? '' : 's'}`}</span>
-                        </button>
                       )}
                     </div>
                   </div>

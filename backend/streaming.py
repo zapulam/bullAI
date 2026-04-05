@@ -6,20 +6,21 @@ Written by zapulam
 
 import json
 
-from agents.stream_events import AgentUpdatedStreamEvent, RawResponsesStreamEvent, RunItemStreamEvent
-from dataclasses import dataclass
+from agents.stream_events import RawResponsesStreamEvent, RunItemStreamEvent, AgentUpdatedStreamEvent
 from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
 from pydantic import BaseModel
-from typing import Any, Literal
+from typing import Any, List, Literal, Optional
+
+from models import get_call_id
 
 
-# SSE Event Models (for chat streaming) ---------------------------------------------------------------------------------------------------
+# --- SSE Event Models (for chat streaming) ---
 class ChatChunkEvent(BaseModel):
     """
-    SSE chunk event during streaming for thought or response content.
+    SSE chunk event during streaming for thought, response, table, or options content.
     """
-    type: Literal["thought", "response"]
-    content: str
+    type: Literal["thought", "response", "options"]
+    content: Any
 
 
 class ChatToolInput(BaseModel):
@@ -48,6 +49,7 @@ class ChatComplete(BaseModel):
     conversation_id: str
     thought: str
     response: str
+    options: Optional[List[dict[str, Any]]] = None
     status: str
 
 
@@ -55,7 +57,7 @@ class ChatError(BaseModel):
     """
     SSE error event when an error occurs during chat generation.
     """
-    type: Literal["error"]
+    type: Literal["response"]
     content: str
 
 
@@ -69,6 +71,7 @@ async def stream_result_events(result):
     Yields:
         dict: Formatted event chunks with type and content
     """
+    call_id_to_tool_name: dict[str, str] = {}
     async for event in result.stream_events():
         # Check most common type first for performance
         if isinstance(event, RawResponsesStreamEvent):
@@ -80,17 +83,27 @@ async def stream_result_events(result):
                 }
         elif isinstance(event, RunItemStreamEvent):
             if event.item.type == "tool_call_item":
-                tool_name = getattr(event.item.raw_item, "name", "web_search_tool")
-                tool_args = event.item.raw_item.arguments if hasattr(event.item.raw_item, 'arguments') else {}
+                raw = event.item.raw_item
+                tool_name = getattr(raw, "name", None)
+                tool_args = getattr(raw, "arguments", None)
+                if isinstance(raw, dict):
+                    tool_name = tool_name or raw.get("name", "web_search")
+                    tool_args = tool_args if tool_args is not None else raw.get("arguments", {})
+                call_id = get_call_id(raw)
+                if call_id and tool_name:
+                    call_id_to_tool_name[call_id] = tool_name
                 yield {
                     "type": "tool_call",
                     "content": tool_name,
                     "arguments": tool_args
                 }
             elif event.item.type == "tool_call_output_item":
+                call_id = get_call_id(event.item.raw_item)
+                tool_name = call_id_to_tool_name.get(call_id)
                 yield {
                     "type": "tool_output",
-                    "content": event.item.output
+                    "content": event.item.output,
+                    "tool_name": tool_name
                 }
         elif isinstance(event, AgentUpdatedStreamEvent):
             yield {
@@ -99,19 +112,17 @@ async def stream_result_events(result):
             }
 
 
-@dataclass(frozen=True)
-class StructuredStreamEvent:
-    """
-    Incremental parsed content event from a structured assistant JSON output.
-    """
-    field: Literal["thought", "response"]
-    text: str
-
-
 class StructuredOutputStreamParser:
     """
     Streaming parser for assistant outputs shaped like:
-        {"thought":"...","response":"...","status":"complete"}
+        {"thought":"...","response":"...","options":[{...}],"status":"complete"}
+
+    `thought` and `response` stream incrementally. The full `options` array (list of
+    objects with type, prompt, choices) is emitted once when the closing `]` is seen,
+    using string-aware bracket matching so `]` inside strings does not end the array.
+
+    Emits ChatChunkEvent instances (thought/response string chunks; one options event
+    with content as a list of dicts).
 
     This parser is robust to arbitrary streaming delta boundaries and supports
     JSON escape sequences inside string values (e.g. \\n, \\\", \\\\).
@@ -143,14 +154,16 @@ class StructuredOutputStreamParser:
         self.response = ""
         self.thought_done = False
         self.response_done = False
+        self.options: Optional[List[dict[str, Any]]] = None
+        self.options_done = False
 
 
-    def feed(self, delta: str) -> list[StructuredStreamEvent]:
+    def feed(self, delta: str) -> list[ChatChunkEvent]:
         if not delta or self._state == "done":
             return []
 
         self._buf += delta
-        out: list[StructuredStreamEvent] = []
+        out: list[ChatChunkEvent] = []
 
         while True:
             if self._state == "seek_thought_key":
@@ -177,10 +190,49 @@ class StructuredOutputStreamParser:
                 self._escaped = False
                 self._state = "in_string"
 
+            elif self._state == "seek_options_key":
+                result = self._seek_optional_key("options")
+                if result is None:
+                    return out
+                if result is False:
+                    self._state = "done"
+                    return out
+                self._state = "seek_options_value"
+
+            elif self._state == "seek_options_value":
+                kind = self._seek_options_value_start()
+                if kind is None:
+                    return out
+                if kind == "null":
+                    self.options = None
+                    self.options_done = True
+                    self._state = "done"
+                    return out
+                self._state = "accumulate_options_array"
+
+            elif self._state == "accumulate_options_array":
+                extracted = self._try_consume_complete_json_array()
+                if extracted is None:
+                    return out
+                try:
+                    parsed = json.loads(extracted)
+                except json.JSONDecodeError:
+                    parsed = []
+                if not isinstance(parsed, list):
+                    parsed = []
+                normalized: List[dict[str, Any]] = []
+                for item in parsed:
+                    if isinstance(item, dict):
+                        normalized.append(item)
+                self.options = normalized
+                self.options_done = True
+                out.append(ChatChunkEvent(type="options", content=normalized))
+                self._state = "done"
+                return out
+
             elif self._state == "in_string":
                 field = self._current_field
                 if field is None:
-                    # Defensive: should never happen.
                     self._state = "done"
                     return out
 
@@ -190,7 +242,7 @@ class StructuredOutputStreamParser:
                         self.thought += chunk_text
                     else:
                         self.response += chunk_text
-                    out.append(StructuredStreamEvent(field=field, text=chunk_text))
+                    out.append(ChatChunkEvent(type=field, content=chunk_text))
 
                 if not done:
                     return out
@@ -200,8 +252,7 @@ class StructuredOutputStreamParser:
                     self._state = "seek_response_key"
                 else:
                     self.response_done = True
-                    self._state = "done"
-                    return out
+                    self._state = "seek_options_key"
 
             elif self._state == "done":
                 return out
@@ -215,6 +266,29 @@ class StructuredOutputStreamParser:
             return None
         self._buf = self._buf[idx + len(needle) :]
         return idx
+
+
+    def _seek_optional_key(self, key: str) -> bool | None:
+        """
+        Seek an optional JSON key. Returns:
+          True  — key found (buffer advanced past key)
+          None  — need more data
+          False — closing '}' found before key (key is absent)
+        """
+        needle = f"\"{key}\""
+        key_idx = self._buf.find(needle)
+        brace_idx = self._buf.find("}")
+
+        if key_idx != -1:
+            if brace_idx == -1 or key_idx < brace_idx:
+                self._buf = self._buf[key_idx + len(needle):]
+                return True
+
+        if brace_idx != -1:
+            return False
+
+        self._buf = self._buf[-self._max_tail:]
+        return None
 
 
     def _seek_string_value_start(self) -> int | None:
@@ -235,13 +309,81 @@ class StructuredOutputStreamParser:
             return None
 
         if self._buf[j] != '"':
-            # We only support JSON string values for thought/response.
             self._buf = self._buf[-self._max_tail :]
             return None
 
-        # Consume up to and including the opening quote.
         self._buf = self._buf[j + 1 :]
         return j
+
+
+    def _seek_options_value_start(self) -> Literal["array", "null"] | None:
+        """
+        After \"options\" key, find ':' then either '[' (array) or 'null'.
+        For '[', consume it and leave buffer inside the array.
+        For 'null', consume it and return 'null'.
+        """
+        colon = self._buf.find(":")
+        if colon == -1:
+            self._buf = self._buf[-self._max_tail:]
+            return None
+
+        j = colon + 1
+        while j < len(self._buf) and self._buf[j] in " \t\r\n":
+            j += 1
+        if j >= len(self._buf):
+            self._buf = self._buf[-self._max_tail:]
+            return None
+
+        if self._buf[j] == "[":
+            self._buf = self._buf[j + 1:]
+            return "array"
+
+        if self._buf[j:j + 4] == "null":
+            self._buf = self._buf[j + 4:]
+            return "null"
+
+        rest = self._buf[j:]
+        if len(rest) < 4 and "null".startswith(rest):
+            self._buf = self._buf[-self._max_tail:]
+            return None
+
+        self._buf = self._buf[-self._max_tail:]
+        return None
+
+
+    def _try_consume_complete_json_array(self) -> str | None:
+        """
+        _buf is immediately after the opening '[' of the options array.
+        Returns full JSON array text including brackets, or None if incomplete.
+        """
+        buf = self._buf
+        depth = 1
+        in_string = False
+        escaped = False
+        i = 0
+        while i < len(buf):
+            ch = buf[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "[":
+                    depth += 1
+                elif ch == "]":
+                    depth -= 1
+                    if depth == 0:
+                        inner = buf[: i + 1]
+                        self._buf = buf[i + 1:]
+                        return "[" + inner
+            i += 1
+
+        return None
 
 
     def _consume_string_chars(self) -> tuple[str, bool]:
@@ -271,12 +413,10 @@ class StructuredOutputStreamParser:
                 continue
 
             if ch == '"':
-                # Closing quote reached: drop it and keep remainder in buffer.
                 self._buf = self._buf[i:]
                 return "".join(emitted), True
 
             emitted.append(ch)
 
-        # Consumed entire buffer without finishing the string.
         self._buf = ""
         return "".join(emitted), False

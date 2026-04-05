@@ -105,11 +105,14 @@ def tool_handler(
     """
     for result in results:
         output = result.output
-        if not output.get("follow_up", True):
-            return ToolsToFinalOutputResult(
-                is_final_output=True,
-                final_output=output
-            )
+        try:
+            if not output.get("follow_up", True):
+                return ToolsToFinalOutputResult(
+                    is_final_output=True,
+                    final_output=output
+                )
+        except:
+            continue
     return ToolsToFinalOutputResult(
         is_final_output=False,
         final_output=None
