@@ -66,6 +66,7 @@ export default function ChatInterface({
   const hasTriggeredRefetchRef = useRef(false);
   const followUpComposeRef = useRef(null);
   const [followUpSendError, setFollowUpSendError] = useState(null);
+  const [saveChartError, setSaveChartError] = useState(null);
   const { messages, isLoading, sendMessage, submitFollowUp, cancelRequest, clearChat, retryLastMessage, sessionId } = useChat(initialSessionId);
   const { saveChart } = useCharts();
   const { prompts: instantPrompts, loaded: instantPromptsLoaded, savePrompts } = useInstantPrompts();
